@@ -9,7 +9,6 @@ from catboost import CatBoostClassifier, CatBoostRegressor
 import matplotlib.pyplot as plt
 import numpy as np
 from imblearn.over_sampling import SMOTE
-from sklearn.ensemble import StackingClassifier
 from sklearn.feature_selection import RFE
 from sklearn.linear_model import Lasso
 
@@ -142,18 +141,22 @@ def main():
         st.write("Pré-visualização dos Dados Carregados:")
         st.write(data.head())
 
-        if 'target' in data.columns:
-            X = data.drop(columns=['target'])
-            y = data['target']
-        else:
-            st.error("O arquivo deve conter a coluna 'target' como variável alvo.")
-            st.stop()
+        # Adicionar no sidebar a opção para selecionar a variável alvo
+        coluna_alvo = st.sidebar.selectbox('Selecione a coluna alvo (target)', data.columns)
 
+        # Usar a coluna selecionada como variável alvo
+        if coluna_alvo in data.columns:
+            X = data.drop(columns=[coluna_alvo])
+            y = data[coluna_alvo]
+        else:
+            st.error(f"A coluna {coluna_alvo} não foi encontrada no arquivo CSV.")
+            st.stop()
+       
         # Remover outliers
         X, y = remover_outliers(X, y)
 
+        # Dividir os dados em conjuntos de treino, validação e teste
         X_train_full, X_test, y_train_full, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
-
         X_train, X_val, y_train, y_val = train_test_split(X_train_full, y_train_full, test_size=0.2, random_state=42)
 
         # Normalizar os dados de entrada
