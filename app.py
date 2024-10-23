@@ -44,6 +44,20 @@ def carregar_dados(file):
         logging.exception("Erro ao carregar os dados")
         return None
 
+# Função para detectar e remover outliers usando o Z-Score
+def remover_outliers(X, y, limiar=3):
+    try:
+        # Converter X para DataFrame se não for
+        if not isinstance(X, pd.DataFrame):
+            X = pd.DataFrame(X)
+        z_scores = np.abs((X - X.mean()) / X.std())
+        filtro = (z_scores < limiar).all(axis=1)
+        return X[filtro], y[filtro]
+    except Exception as e:
+        st.error(f"Erro ao remover outliers: {e}")
+        logging.exception("Erro ao remover outliers")
+        return X, y
+
 # Função para preparar os dados (pré-processamento)
 def preparar_dados(X, y, tipo_problema):
     try:
@@ -113,9 +127,9 @@ def mostrar_importancia_features(modelo, X, preprocessor):
         if hasattr(modelo, 'feature_importances_'):
             importancias = modelo.feature_importances_
             # Obter os nomes das features após o pré-processamento
-            features = preprocessor.transformers_[0][2].tolist()  # Colunas numéricas
+            num_features = preprocessor.transformers_[0][2]
             cat_features = preprocessor.transformers_[1][1]['onehot'].get_feature_names_out()
-            features.extend(cat_features)
+            features = np.concatenate([num_features, cat_features])
             importancia_df = pd.DataFrame({'Features': features, 'Importância': importancias})
             importancia_df = importancia_df.sort_values(by='Importância', ascending=False)
             
