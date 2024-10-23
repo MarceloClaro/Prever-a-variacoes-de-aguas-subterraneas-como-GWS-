@@ -6,3 +6,4 @@ catboost
 matplotlib
 numpy
 imbalanced-learn
+statsmodels
