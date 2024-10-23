@@ -8,14 +8,11 @@ numpy
 imbalanced-learn
 statsmodels
 pandas
-
 seaborn
 plotly
-
 sentence-transformers
 gensim
 scipy
-
 jellyfish
 gensim
 spacy 
