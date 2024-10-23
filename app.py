@@ -1,19 +1,31 @@
 import streamlit as st
 import pandas as pd
-from sklearn.model_selection import train_test_split, RandomizedSearchCV, TimeSeriesSplit
-from sklearn.preprocessing import StandardScaler, OneHotEncoder, PowerTransformer
-from sklearn.ensemble import RandomForestRegressor, StackingRegressor
-from sklearn.metrics import (
-    mean_squared_error, mean_absolute_error, mean_absolute_percentage_error, r2_score
+from sklearn.model_selection import (
+    train_test_split, GridSearchCV, RandomizedSearchCV,
+    cross_val_score, KFold, TimeSeriesSplit
 )
-from xgboost import XGBRegressor
-from catboost import CatBoostRegressor
+from sklearn.preprocessing import StandardScaler, MinMaxScaler, OneHotEncoder
+from sklearn.ensemble import (
+    RandomForestClassifier, RandomForestRegressor,
+    StackingClassifier, StackingRegressor, VotingRegressor
+)
+from sklearn.metrics import (
+    accuracy_score, f1_score, precision_score, recall_score, mean_squared_error,
+    mean_absolute_percentage_error, r2_score, confusion_matrix, roc_auc_score,
+    classification_report, roc_curve, auc, mean_absolute_error
+)
+from xgboost import XGBClassifier, XGBRegressor
+from catboost import CatBoostClassifier, CatBoostRegressor
 import matplotlib.pyplot as plt
 import numpy as np
+from imblearn.over_sampling import SMOTE
+from sklearn.feature_selection import RFE
+from sklearn.linear_model import Lasso
 from sklearn.pipeline import Pipeline
 from sklearn.impute import SimpleImputer
 from sklearn.compose import ColumnTransformer
 import logging
+from sklearn.preprocessing import PowerTransformer
 
 # Configuração básica de logging
 logging.basicConfig(level=logging.INFO)
@@ -21,7 +33,7 @@ logging.basicConfig(level=logging.INFO)
 # Função para carregar e tratar os dados
 def carregar_dados(file):
     try:
-        data = pd.read_csv(file, parse_dates=True)
+        data = pd.read_csv(file)
         st.write("Informações dos Dados:")
         st.write(data.describe())
         
@@ -47,15 +59,42 @@ def extrair_caracteristicas_temporais(dataframe, coluna_tempo):
         dataframe['mes'] = dataframe[coluna_tempo].dt.month
         dataframe['dia'] = dataframe[coluna_tempo].dt.day
         dataframe['dia_da_semana'] = dataframe[coluna_tempo].dt.weekday
-        dataframe['estacao'] = dataframe[coluna_tempo].dt.month % 12 // 3 + 1
+        dataframe['estacao'] = dataframe[coluna_tempo].dt.month % 12 // 3 + 1  # 1: Verão, ..., 4: Primavera
         return dataframe
     except Exception as e:
-        st.error(f"Erro ao extrair características temporais: {e}")
+        st.warning("Erro ao extrair características temporais.")
         logging.exception("Erro ao extrair características temporais")
         return dataframe
 
+# Função para codificar coordenadas geográficas
+def codificar_coordenadas(dataframe, coluna_latitude, coluna_longitude):
+    try:
+        dataframe['latitude_sin'] = np.sin(np.radians(dataframe[coluna_latitude]))
+        dataframe['latitude_cos'] = np.cos(np.radians(dataframe[coluna_latitude]))
+        dataframe['longitude_sin'] = np.sin(np.radians(dataframe[coluna_longitude]))
+        dataframe['longitude_cos'] = np.cos(np.radians(dataframe[coluna_longitude]))
+        return dataframe
+    except Exception as e:
+        st.warning("Erro ao codificar coordenadas geográficas.")
+        logging.exception("Erro ao codificar coordenadas geográficas")
+        return dataframe
+
+# Função para detectar e remover outliers usando o Z-Score
+def remover_outliers(X, y, limiar=3):
+    try:
+        # Converter X para DataFrame se não for
+        if not isinstance(X, pd.DataFrame):
+            X = pd.DataFrame(X)
+        z_scores = np.abs((X - X.mean()) / X.std())
+        filtro = (z_scores < limiar).all(axis=1)
+        return X[filtro], y[filtro]
+    except Exception as e:
+        st.error(f"Erro ao remover outliers: {e}")
+        logging.exception("Erro ao remover outliers")
+        return X, y
+
 # Função para preparar os dados (pré-processamento)
-def preparar_dados(X, y):
+def preparar_dados(X, y, tipo_problema):
     try:
         # Identificar colunas numéricas e categóricas
         num_cols = X.select_dtypes(include=['float64', 'int64']).columns
@@ -64,7 +103,6 @@ def preparar_dados(X, y):
         # Pipelines para colunas numéricas e categóricas
         num_pipeline = Pipeline([
             ('imputer', SimpleImputer(strategy='mean')),
-            ('power_transformer', PowerTransformer()),
             ('scaler', StandardScaler())
         ])
 
@@ -91,18 +129,36 @@ def preparar_dados(X, y):
 def calcular_metricas_regressao(y_test, y_pred):
     mse = mean_squared_error(y_test, y_pred)
     rmse = np.sqrt(mse)
-    mae = mean_absolute_error(y_test, y_pred)
     mape = mean_absolute_percentage_error(y_test, y_pred)
+    mae = mean_absolute_error(y_test, y_pred)
     r2 = r2_score(y_test, y_pred)
-    return mse, rmse, mae, mape, r2
+    erro_medio = np.mean(np.abs(y_test - y_pred))
+    return mse, rmse, mape, mae, r2, erro_medio
 
 # Exibir métricas de comparação
-def exibir_metricas_regressao(mse, rmse, mae, mape, r2):
-    st.write(f"**Mean Squared Error (MSE):** {mse:.4f}")
-    st.write(f"**Root Mean Squared Error (RMSE):** {rmse:.4f}")
-    st.write(f"**Mean Absolute Error (MAE):** {mae:.4f}")
-    st.write(f"**Mean Absolute Percentage Error (MAPE):** {mape:.4f}")
+def exibir_metricas_regressao(mse, rmse, mape, mae, r2, erro_medio):
+    st.write(f"**Erro Médio Quadrado (MSE):** {mse:.4f}")
+    st.write(f"**Raiz do Erro Médio Quadrado (RMSE):** {rmse:.4f}")
+    st.write(f"**Erro Absoluto Médio (MAE):** {mae:.4f}")
+    st.write(f"**Erro Percentual Absoluto Médio (MAPE):** {mape:.4f}")
     st.write(f"**Coeficiente de Determinação (R²):** {r2:.4f}")
+    st.write(f"**Erro Médio Absoluto:** {erro_medio:.4f}")
+
+# Função para calcular métricas de classificação
+def calcular_metricas_classificacao(y_test, y_pred, y_proba=None):
+    acc = accuracy_score(y_test, y_pred)
+    f1 = f1_score(y_test, y_pred, average='weighted')
+    precision = precision_score(y_test, y_pred, average='weighted')
+    recall = recall_score(y_test, y_pred, average='weighted')
+    metrics = {'Accuracy': acc, 'F1 Score': f1, 'Precision': precision, 'Recall': recall}
+    if y_proba is not None and len(np.unique(y_test)) == 2:
+        auc_score = roc_auc_score(y_test, y_proba[:, 1])
+        metrics['AUC'] = auc_score
+    return metrics
+
+def exibir_metricas_classificacao(metrics):
+    for metric_name, metric_value in metrics.items():
+        st.write(f"**{metric_name}:** {metric_value:.4f}")
 
 # Função para exibir a importância das features
 def mostrar_importancia_features(modelo, X, preprocessor):
@@ -129,15 +185,17 @@ def mostrar_importancia_features(modelo, X, preprocessor):
         logging.exception("Erro ao exibir a importância das features")
 
 # Função para otimização de hiperparâmetros com Randomized Search
-def otimizar_modelo(modelo, X_train, y_train, param_distributions):
+def otimizar_modelo(modelo, X_train, y_train, param_distributions, tipo_problema):
     try:
-        scoring = 'neg_mean_squared_error'
-        tscv = TimeSeriesSplit(n_splits=5)
+        if tipo_problema == 'Classificação':
+            scoring = 'f1_weighted'
+        else:
+            scoring = 'neg_mean_squared_error'
         random_search = RandomizedSearchCV(
             estimator=modelo,
             param_distributions=param_distributions,
-            n_iter=20,
-            cv=tscv,
+            n_iter=50,
+            cv=5,
             scoring=scoring,
             random_state=42,
             n_jobs=-1
@@ -151,45 +209,71 @@ def otimizar_modelo(modelo, X_train, y_train, param_distributions):
         return modelo
 
 # Função para empilhamento de modelos (Stacking)
-def stacking_model():
+def stacking_model(tipo_problema):
     try:
-        estimators = [
-            ('rf', RandomForestRegressor(n_estimators=100)),
-            ('xgb', XGBRegressor(n_estimators=100)),
-            ('cat', CatBoostRegressor(n_estimators=100, verbose=0))
-        ]
-        final_estimator = XGBRegressor(n_estimators=100)
-        modelo = StackingRegressor(estimators=estimators, final_estimator=final_estimator)
+        if tipo_problema == 'Classificação':
+            estimators = [
+                ('rf', RandomForestClassifier(n_estimators=100)),
+                ('xgb', XGBClassifier(n_estimators=100, use_label_encoder=False, eval_metric='logloss')),
+                ('cat', CatBoostClassifier(n_estimators=100, verbose=0))
+            ]
+            final_estimator = XGBClassifier(n_estimators=100, use_label_encoder=False, eval_metric='logloss')
+            modelo = StackingClassifier(estimators=estimators, final_estimator=final_estimator)
+        else:
+            estimators = [
+                ('rf', RandomForestRegressor(n_estimators=100)),
+                ('xgb', XGBRegressor(n_estimators=100)),
+                ('cat', CatBoostRegressor(n_estimators=100, verbose=0))
+            ]
+            final_estimator = XGBRegressor(n_estimators=100)
+            modelo = StackingRegressor(estimators=estimators, final_estimator=final_estimator)
         return modelo
     except Exception as e:
         st.error(f"Erro ao criar o modelo de empilhamento: {e}")
         logging.exception("Erro ao criar o modelo de empilhamento")
         return None
 
+# Função para verificar se o tipo de problema corresponde ao tipo de alvo
+def verificar_tipo_problema(y, tipo_problema):
+    if tipo_problema == 'Classificação' and not pd.api.types.is_integer_dtype(y):
+        st.error("O alvo é contínuo, mas o tipo de problema selecionado é 'Classificação'. Por favor, ajuste o tipo de problema para 'Regressão' ou converta o alvo em categorias discretas.")
+        st.stop()
+    elif tipo_problema == 'Regressão' and not pd.api.types.is_numeric_dtype(y):
+        st.error("O alvo é categórico, mas o tipo de problema selecionado é 'Regressão'. Por favor, ajuste o tipo de problema para 'Classificação' ou converta o alvo em valores contínuos.")
+        st.stop()
+
 # Função para configurar o sidebar
 def configurar_sidebar():
-    st.sidebar.title("Configurações do Modelo")
+    st.sidebar.title("Configurações dos Modelos")
     modelo_tipo = st.sidebar.selectbox('Escolha o Modelo', ['XGBoost', 'Random Forest', 'CatBoost', 'Stacking'])
+    tipo_problema = st.sidebar.selectbox('Escolha o Tipo de Problema', ['Classificação', 'Regressão'])
     
     n_estimators = st.sidebar.slider('Número de Árvores (n_estimators)', 100, 1000, 300, step=50)
     learning_rate = st.sidebar.slider('Taxa de Aprendizado (learning_rate)', 0.01, 0.3, 0.1)
     max_depth = st.sidebar.slider('Profundidade Máxima (max_depth)', 3, 20, 6)
-    l2_reg = st.sidebar.slider('Regularização L2 (reg_lambda)', 0.0, 1.0, 0.1)
+    l2_reg = st.sidebar.slider('Regularização L2 (Weight Decay)', 0.0, 1.0, 0.1)
     
     # Configurações do XGBoost (opcionais)
     if modelo_tipo == 'XGBoost':
         subsample = st.sidebar.slider('Subsample (Taxa de Amostragem)', 0.5, 1.0, 0.8)
-        colsample_bytree = st.sidebar.slider('ColSample ByTree', 0.5, 1.0, 0.8)
+        colsample_bytree = st.sidebar.slider('ColSample ByTree (Taxa de Colunas por Árvore)', 0.5, 1.0, 0.8)
     else:
         subsample = None
         colsample_bytree = None
 
-    return modelo_tipo, n_estimators, learning_rate, max_depth, l2_reg, subsample, colsample_bytree
+    # Valores de comparação com o artigo fornecidos pelo usuário
+    st.sidebar.subheader("Valores do Artigo para Comparação (Opcional)")
+    mse_artigo = st.sidebar.number_input('MSE do Artigo', min_value=0.0, value=0.0)
+    mape_artigo = st.sidebar.number_input('MAPE do Artigo', min_value=0.0, value=0.0)
+    r2_artigo = st.sidebar.number_input('R² do Artigo', min_value=0.0, max_value=1.0, value=0.0)
+    erro_medio_artigo = st.sidebar.number_input('Erro Médio do Artigo', min_value=0.0, value=0.0)
+
+    return modelo_tipo, tipo_problema, n_estimators, learning_rate, max_depth, l2_reg, subsample, colsample_bytree, mse_artigo, mape_artigo, r2_artigo, erro_medio_artigo
 
 # Função principal
 def main():
-    st.title("Previsão de Variações de Águas Subterrâneas (GWS)")
-    modelo_tipo, n_estimators, learning_rate, max_depth, l2_reg, subsample, colsample_bytree = configurar_sidebar()
+    st.title("Aplicativo de Aprendizado de Máquina para Previsão de Variações de Águas Subterrâneas (GWS)")
+    modelo_tipo, tipo_problema, n_estimators, learning_rate, max_depth, l2_reg, subsample, colsample_bytree, mse_artigo, mape_artigo, r2_artigo, erro_medio_artigo = configurar_sidebar()
 
     uploaded_file = st.sidebar.file_uploader("Carregue seus dados em CSV", type=["csv"])
 
@@ -199,25 +283,29 @@ def main():
             st.write("Pré-visualização dos Dados Carregados:")
             st.write(data.head())
 
-            # Selecionar a coluna de data, se disponível
-            colunas_data = [col for col in data.columns if 'data' in col.lower() or 'date' in col.lower()]
-            if colunas_data:
-                coluna_data = st.sidebar.selectbox('Selecione a coluna de data', colunas_data)
-                data = extrair_caracteristicas_temporais(data, coluna_data)
-            else:
-                st.warning("Não foi encontrada nenhuma coluna de data para extrair características temporais.")
+            # Opção para selecionar a coluna de data
+            if st.sidebar.checkbox("Os dados contêm coluna de data?"):
+                coluna_tempo = st.sidebar.selectbox('Selecione a coluna de data', data.columns)
+                data = extrair_caracteristicas_temporais(data, coluna_tempo)
 
-            # Selecionar a coluna alvo
-            coluna_alvo = st.sidebar.selectbox('Selecione a coluna alvo (GWS)', data.columns)
+            # Opção para selecionar colunas de latitude e longitude
+            if st.sidebar.checkbox("Os dados contêm coordenadas geográficas?"):
+                coluna_latitude = st.sidebar.selectbox('Selecione a coluna de Latitude', data.columns)
+                coluna_longitude = st.sidebar.selectbox('Selecione a coluna de Longitude', data.columns)
+                data = codificar_coordenadas(data, coluna_latitude, coluna_longitude)
+
+            # Adicionar no sidebar a opção para selecionar a variável alvo
+            coluna_alvo = st.sidebar.selectbox('Selecione a coluna alvo (target)', data.columns)
 
             # Usar a coluna selecionada como variável alvo
             if coluna_alvo in data.columns:
                 X = data.drop(columns=[coluna_alvo])
                 y = data[coluna_alvo]
+                verificar_tipo_problema(y, tipo_problema)
             else:
                 st.error(f"A coluna {coluna_alvo} não foi encontrada no arquivo CSV.")
                 st.stop()
-
+            
             # Remover outliers (opcional)
             remover_outliers_toggle = st.sidebar.checkbox("Remover Outliers?", value=False)
             if remover_outliers_toggle:
@@ -225,81 +313,155 @@ def main():
                 st.write("Outliers removidos.")
 
             # Pré-processar os dados
-            X_processed, preprocessor = preparar_dados(X, y)
+            X_processed, preprocessor = preparar_dados(X, y, tipo_problema)
             if X_processed is None:
                 st.stop()
 
-            # Dividir os dados em conjuntos de treino e teste mantendo a ordem temporal
-            split_index = int(0.8 * len(X_processed))
-            X_train_full, X_test = X_processed[:split_index], X_processed[split_index:]
-            y_train_full, y_test = y[:split_index], y[split_index:]
+            # Dividir os dados em conjuntos de treino e teste
+            if st.sidebar.checkbox("Usar Validação Cruzada Temporal?", value=False):
+                time_series = True
+                tscv = TimeSeriesSplit(n_splits=5)
+                splits = tscv.split(X_processed)
+            else:
+                time_series = False
+                X_train_full, X_test, y_train_full, y_test = train_test_split(X_processed, y, test_size=0.2, random_state=42)
 
-            # Escolher o modelo
-            modelo_kwargs = {
-                'n_estimators': n_estimators,
-                'learning_rate': learning_rate,
-                'max_depth': max_depth,
-                'reg_lambda': l2_reg
-            }
-            if subsample and colsample_bytree:
-                modelo_kwargs['subsample'] = subsample
-                modelo_kwargs['colsample_bytree'] = colsample_bytree
+            # Aplicar SMOTE para balanceamento em problemas de classificação
+            if tipo_problema == 'Classificação':
+                aplicar_smote_toggle = st.sidebar.checkbox("Aplicar SMOTE para Balanceamento?", value=False)
+                if aplicar_smote_toggle:
+                    sm = SMOTE(random_state=42)
+                    X_train_full, y_train_full = sm.fit_resample(X_train_full, y_train_full)
+                    st.write("SMOTE aplicado para balanceamento das classes.")
 
-            if modelo_tipo == 'XGBoost':
-                modelo = XGBRegressor(**modelo_kwargs)
-            elif modelo_tipo == 'CatBoost':
-                modelo = CatBoostRegressor(**modelo_kwargs, verbose=0)
-            elif modelo_tipo == 'Random Forest':
-                modelo = RandomForestRegressor(**modelo_kwargs)
-            elif modelo_tipo == 'Stacking':
-                modelo = stacking_model()
-
-            # Aplicar Randomized Search para otimização de hiperparâmetros
-            if st.sidebar.checkbox('Otimizar Hiperparâmetros?'):
-                param_distributions = {
-                    'n_estimators': [100, 200, 300, 500],
-                    'max_depth': [4, 6, 8, 10, 12],
-                    'learning_rate': [0.01, 0.05, 0.1, 0.2],
-                    'reg_lambda': [0.0, 0.1, 0.5, 1.0]
+            # Escolher o modelo baseado no tipo de problema
+            if tipo_problema == 'Regressão':
+                # Definir parâmetros do modelo de regressão
+                modelo_kwargs = {
+                    'n_estimators': n_estimators,
+                    'learning_rate': learning_rate,
+                    'max_depth': max_depth,
+                    'reg_lambda': l2_reg
                 }
-                modelo = otimizar_modelo(modelo, X_train_full, y_train_full, param_distributions)
+                if subsample and colsample_bytree:
+                    modelo_kwargs['subsample'] = subsample
+                    modelo_kwargs['colsample_bytree'] = colsample_bytree
 
-            # Treinar o modelo usando TimeSeriesSplit
-            tscv = TimeSeriesSplit(n_splits=5)
-            scores = []
-            for train_index, val_index in tscv.split(X_train_full):
-                X_train, X_val = X_train_full[train_index], X_train_full[val_index]
-                y_train, y_val = y_train_full.iloc[train_index], y_train_full.iloc[val_index]
-                modelo.fit(X_train, y_train)
-                y_pred_val = modelo.predict(X_val)
-                mse_val = mean_squared_error(y_val, y_pred_val)
-                scores.append(mse_val)
-            st.write(f"Validação Cruzada Temporal (MSE): {np.mean(scores):.4f} (+/- {np.std(scores):.4f})")
+                # Treinamento do modelo de regressão
+                if modelo_tipo == 'XGBoost':
+                    modelo = XGBRegressor(**modelo_kwargs)
+                elif modelo_tipo == 'CatBoost':
+                    modelo = CatBoostRegressor(**modelo_kwargs, verbose=0)
+                elif modelo_tipo == 'Random Forest':
+                    modelo = RandomForestRegressor(**modelo_kwargs)
+                elif modelo_tipo == 'Stacking':
+                    modelo = stacking_model(tipo_problema)
 
-            # Ajustar o modelo nos dados completos de treinamento
-            modelo.fit(X_train_full, y_train_full)
+                # Aplicar Randomized Search para otimização de hiperparâmetros
+                if st.sidebar.checkbox('Otimizar Hiperparâmetros?'):
+                    param_distributions = {
+                        'n_estimators': [100, 200, 300, 500],
+                        'max_depth': [4, 6, 8, 10, 12],
+                        'learning_rate': [0.01, 0.05, 0.1, 0.2],
+                    }
+                    modelo = otimizar_modelo(modelo, X_train_full, y_train_full, param_distributions, tipo_problema)
 
-            # Fazer previsões no conjunto de teste
-            y_pred = modelo.predict(X_test)
+                # Treinar o modelo usando Cross-Validation
+                if time_series:
+                    scores = cross_val_score(modelo, X_processed, y, cv=tscv, scoring='neg_mean_squared_error')
+                    st.write(f"Validação Cruzada Temporal (MSE): {-np.mean(scores):.4f} (+/- {np.std(scores):.4f})")
+                else:
+                    cv = KFold(n_splits=5, shuffle=True, random_state=42)
+                    scores = cross_val_score(modelo, X_train_full, y_train_full, cv=cv, scoring='neg_mean_squared_error')
+                    st.write(f"Validação Cruzada (MSE): {-np.mean(scores):.4f} (+/- {np.std(scores):.4f})")
 
-            # Calcular métricas de desempenho de regressão
-            mse, rmse, mae, mape, r2 = calcular_metricas_regressao(y_test, y_pred)
-            exibir_metricas_regressao(mse, rmse, mae, mape, r2)
+                    # Ajustar o modelo nos dados completos de treinamento
+                    modelo.fit(X_train_full, y_train_full)
 
-            # Exibir a importância das features
-            mostrar_importancia_features(modelo, X, preprocessor)
+                    # Fazer previsões no conjunto de teste
+                    y_pred = modelo.predict(X_test)
 
-            # Exibir gráfico de dispersão de previsões vs valores reais
-            plotar_dispersao_previsoes(y_test, y_pred)
+                    # Calcular métricas de desempenho de regressão
+                    mse, rmse, mape, mae, r2, erro_medio = calcular_metricas_regressao(y_test, y_pred)
+                    exibir_metricas_regressao(mse, rmse, mape, mae, r2, erro_medio)
 
-            # Exibir gráfico de resíduos
-            plotar_residuos(y_test, y_pred)
+                    # Comparar com os valores do artigo (se fornecidos)
+                    if mse_artigo > 0:
+                        comparar_com_artigo(mse, mape, r2, erro_medio, mse_artigo, mape_artigo, r2_artigo, erro_medio_artigo)
 
-            # Análise de resíduos
-            testar_estacionariedade(y_test - y_pred)
+                    # Exibir a importância das features
+                    mostrar_importancia_features(modelo, X, preprocessor)
 
-        else:
-            st.write("Erro ao processar os dados.")
+                    # Exibir gráfico de dispersão de previsões vs valores reais
+                    plotar_dispersao_previsoes(y_test, y_pred)
+
+                    # Exibir gráfico de resíduos
+                    plotar_residuos(y_test, y_pred)
+
+            elif tipo_problema == 'Classificação':
+                # Definir parâmetros do modelo de classificação
+                modelo_kwargs = {
+                    'n_estimators': n_estimators,
+                    'learning_rate': learning_rate,
+                    'max_depth': max_depth,
+                    'reg_lambda': l2_reg
+                }
+                if subsample and colsample_bytree:
+                    modelo_kwargs['subsample'] = subsample
+                    modelo_kwargs['colsample_bytree'] = colsample_bytree
+
+                # Treinamento do modelo de classificação
+                if modelo_tipo == 'XGBoost':
+                    modelo = XGBClassifier(**modelo_kwargs, use_label_encoder=False, eval_metric='logloss')
+                elif modelo_tipo == 'CatBoost':
+                    modelo = CatBoostClassifier(**modelo_kwargs, verbose=0)
+                elif modelo_tipo == 'Random Forest':
+                    modelo = RandomForestClassifier(**modelo_kwargs)
+                elif modelo_tipo == 'Stacking':
+                    modelo = stacking_model(tipo_problema)
+
+                # Aplicar Randomized Search para otimização de hiperparâmetros
+                if st.sidebar.checkbox('Otimizar Hiperparâmetros?'):
+                    param_distributions = {
+                        'n_estimators': [100, 200, 300, 500],
+                        'max_depth': [4, 6, 8, 10, 12],
+                        'learning_rate': [0.01, 0.05, 0.1, 0.2],
+                    }
+                    modelo = otimizar_modelo(modelo, X_train_full, y_train_full, param_distributions, tipo_problema)
+
+                # Treinar o modelo usando Cross-Validation
+                if time_series:
+                    scores = cross_val_score(modelo, X_processed, y, cv=tscv, scoring='f1_weighted')
+                    st.write(f"Validação Cruzada Temporal (F1 Score): {np.mean(scores):.4f} (+/- {np.std(scores):.4f})")
+                else:
+                    cv = KFold(n_splits=5, shuffle=True, random_state=42)
+                    scores = cross_val_score(modelo, X_train_full, y_train_full, cv=cv, scoring='f1_weighted')
+                    st.write(f"Validação Cruzada (F1 Score): {np.mean(scores):.4f} (+/- {np.std(scores):.4f})")
+
+                    # Ajustar o modelo nos dados completos de treinamento
+                    modelo.fit(X_train_full, y_train_full)
+
+                    # Fazer previsões no conjunto de teste
+                    y_pred = modelo.predict(X_test)
+                    y_proba = modelo.predict_proba(X_test)
+
+                    # Calcular métricas de classificação
+                    metrics = calcular_metricas_classificacao(y_test, y_pred, y_proba)
+                    exibir_metricas_classificacao(metrics)
+
+                    # Exibir relatório de classificação
+                    st.write("### Relatório de Classificação:")
+                    st.text(classification_report(y_test, y_pred))
+
+                    # Exibir matriz de confusão
+                    plotar_matriz_confusao(y_test, y_pred)
+
+                    # Exibir curva ROC (para problemas binários)
+                    if len(np.unique(y_test)) == 2:
+                        plotar_curva_roc(y_test, y_proba)
+
+                    # Exibir a importância das features
+                    mostrar_importancia_features(modelo, X, preprocessor)
     else:
         st.write("Por favor, carregue um arquivo CSV para começar.")
 
@@ -326,20 +488,51 @@ def plotar_residuos(y_test, y_pred):
     plt.title('Resíduos vs Previsões')
     st.pyplot(fig)
 
-# Função para testar estacionariedade dos resíduos
-from statsmodels.tsa.stattools import adfuller
+# Função para plotar matriz de confusão
+def plotar_matriz_confusao(y_test, y_pred):
+    st.write("### Matriz de Confusão:")
+    cm = confusion_matrix(y_test, y_pred)
+    fig, ax = plt.subplots()
+    cax = ax.matshow(cm, cmap=plt.cm.Blues)
+    plt.title('Matriz de Confusão')
+    fig.colorbar(cax)
+    ax.set_xticklabels([''] + list(np.unique(y_test)))
+    ax.set_yticklabels([''] + list(np.unique(y_test)))
+    plt.xlabel('Previstos')
+    plt.ylabel('Verdadeiros')
+    for i in range(cm.shape[0]):
+        for j in range(cm.shape[1]):
+            ax.text(j, i, format(cm[i, j], 'd'), ha='center', va='center', color='red')
+    st.pyplot(fig)
 
-def testar_estacionariedade(residuos):
-    st.write("### Teste de Estacionariedade dos Resíduos")
-    result = adfuller(residuos)
-    st.write(f"Estatística ADF: {result[0]:.4f}")
-    st.write(f"Valor-p: {result[1]:.4f}")
-    for key, value in result[4].items():
-        st.write(f"Valor Crítico ({key}): {value:.4f}")
-    if result[1] < 0.05:
-        st.write("Os resíduos são estacionários (rejeita-se a hipótese nula).")
-    else:
-        st.write("Os resíduos não são estacionários (não se rejeita a hipótese nula).")
+# Função para plotar curva ROC
+def plotar_curva_roc(y_test, y_proba):
+    st.write("### Curva ROC:")
+    fpr, tpr, thresholds = roc_curve(y_test, y_proba[:, 1])
+    roc_auc = auc(fpr, tpr)
+    fig, ax = plt.subplots()
+    ax.plot(fpr, tpr, color='darkorange', lw=2, label=f'Curva ROC (área = {roc_auc:.2f})')
+    ax.plot([0, 1], [0, 1], color='navy', lw=2, linestyle='--')
+    ax.set_xlim([0.0, 1.0])
+    ax.set_ylim([0.0, 1.05])
+    ax.set_xlabel('Taxa de Falso Positivo')
+    ax.set_ylabel('Taxa de Verdadeiro Positivo')
+    ax.set_title('Receiver Operating Characteristic')
+    ax.legend(loc="lower right")
+    st.pyplot(fig)
+
+# Função para comparar com o artigo
+def comparar_com_artigo(mse, mape, r2, erro_medio, mse_artigo, mape_artigo, r2_artigo, erro_medio_artigo):
+    st.write("### Comparação com o Artigo:")
+    st.write(f"MSE no Artigo: {mse_artigo}, MSE do Modelo: {mse:.4f}")
+    st.write(f"MAPE no Artigo: {mape_artigo}, MAPE do Modelo: {mape:.4f}")
+    st.write(f"R² no Artigo: {r2_artigo}, R² do Modelo: {r2:.4f}")
+    st.write(f"Erro Médio no Artigo: {erro_medio_artigo}, Erro Médio do Modelo: {erro_medio:.4f}")
+    
+    if abs(r2 - r2_artigo) > 0.1:
+        st.warning("Atenção: O R² do modelo está significativamente diferente do valor apresentado no artigo.")
+    if mse > mse_artigo * 1.2:
+        st.warning("O MSE do modelo é muito maior que o do artigo. Considere ajustar os hiperparâmetros.")
 
 # Executar a função principal
 if __name__ == "__main__":
