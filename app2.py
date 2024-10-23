@@ -508,85 +508,6 @@ def main():
     else:
         st.write("Por favor, carregue um arquivo CSV para começar.")
 
-#_________________________________
-
-# Imagem e Contatos
-if os.path.exists("eu.ico"):
-    st.sidebar.image("eu.ico", width=80)
-else:
-    st.sidebar.text("Imagem do contato não encontrada.")
-
-st.sidebar.write("""
-Projeto Geomaker + IA 
-
-https://doi.org/10.5281/zenodo.13856575
-- Professor: Marcelo Claro.
-Contatos: marceloclaro@gmail.com
-Whatsapp: (88)981587145
-Instagram: [marceloclaro.geomaker](https://www.instagram.com/marceloclaro.geomaker/)
-
-""")
-
-# _____________________________________________
-# Controle de Áudio
-st.sidebar.title("Controle de Áudio")
-
-# Dicionário de arquivos de áudio, com nomes amigáveis mapeando para o caminho do arquivo
-mp3_files = {
-    "Áudio explicativo 1": "kariri.mp3",
-}
-
-# Lista de arquivos MP3 para seleção
-selected_mp3 = st.sidebar.radio("Escolha um áudio explicativo:", options=list(mp3_files.keys()))
-
-# Controle de opção de repetição
-loop = st.sidebar.checkbox("Repetir áudio")
-
-# Botão de Play para iniciar o áudio
-play_button = st.sidebar.button("Play")
-
-# Placeholder para o player de áudio
-audio_placeholder = st.sidebar.empty()
-
-# Função para verificar se o arquivo existe
-def check_file_exists(mp3_path):
-    if not os.path.exists(mp3_path):
-        st.sidebar.error(f"Arquivo {mp3_path} não encontrado.")
-        return False
-    return True
-
-# Se o botão Play for pressionado e um arquivo de áudio estiver selecionado
-if play_button and selected_mp3:
-    mp3_path = mp3_files[selected_mp3]
-    
-    # Verificação da existência do arquivo
-    if check_file_exists(mp3_path):
-        try:
-            # Abrindo o arquivo de áudio no modo binário
-            with open(mp3_path, "rb") as audio_file:
-                audio_bytes = audio_file.read()
-                
-                # Codificando o arquivo em base64 para embutir no HTML
-                audio_base64 = base64.b64encode(audio_bytes).decode('utf-8')
-                
-                # Controle de loop (repetição)
-                loop_attr = "loop" if loop else ""
-                
-                # Gerando o player de áudio em HTML
-                audio_html = f"""
-                <audio id="audio-player" controls autoplay {loop_attr}>
-                  <source src="data:audio/mp3;base64,{audio_base64}" type="audio/mp3">
-                  Seu navegador não suporta o elemento de áudio.
-                </audio>
-                """
-                
-                # Inserindo o player de áudio na interface
-                audio_placeholder.markdown(audio_html, unsafe_allow_html=True)
-        
-        except FileNotFoundError:
-            st.sidebar.error(f"Arquivo {mp3_path} não encontrado.")
-        except Exception as e:
-            st.sidebar.error(f"Erro ao carregar o arquivo: {str(e)}")
 
 
 # Função para exibir gráfico de dispersão (para regressão)
@@ -657,6 +578,86 @@ def comparar_com_artigo(mse, mape, r2, erro_medio, mse_artigo, mape_artigo, r2_a
         st.warning("Atenção: O R² do modelo está significativamente diferente do valor apresentado no artigo.")
     if mse > mse_artigo * 1.2:
         st.warning("O MSE do modelo é muito maior que o do artigo. Considere ajustar os hiperparâmetros.")
+    #_________________________________
+    
+    # Imagem e Contatos
+    if os.path.exists("eu.ico"):
+        st.sidebar.image("eu.ico", width=80)
+    else:
+        st.sidebar.text("Imagem do contato não encontrada.")
+    
+    st.sidebar.write("""
+    Projeto Geomaker + IA 
+    
+    https://doi.org/10.5281/zenodo.13856575
+    - Professor: Marcelo Claro.
+    Contatos: marceloclaro@gmail.com
+    Whatsapp: (88)981587145
+    Instagram: [marceloclaro.geomaker](https://www.instagram.com/marceloclaro.geomaker/)
+    
+    """)
+    
+    # _____________________________________________
+    # Controle de Áudio
+    st.sidebar.title("Controle de Áudio")
+    
+    # Dicionário de arquivos de áudio, com nomes amigáveis mapeando para o caminho do arquivo
+    mp3_files = {
+        "Áudio explicativo 1": "kariri.mp3",
+    }
+    
+    # Lista de arquivos MP3 para seleção
+    selected_mp3 = st.sidebar.radio("Escolha um áudio explicativo:", options=list(mp3_files.keys()))
+    
+    # Controle de opção de repetição
+    loop = st.sidebar.checkbox("Repetir áudio")
+    
+    # Botão de Play para iniciar o áudio
+    play_button = st.sidebar.button("Play")
+    
+    # Placeholder para o player de áudio
+    audio_placeholder = st.sidebar.empty()
+    
+    # Função para verificar se o arquivo existe
+    def check_file_exists(mp3_path):
+        if not os.path.exists(mp3_path):
+            st.sidebar.error(f"Arquivo {mp3_path} não encontrado.")
+            return False
+        return True
+    
+    # Se o botão Play for pressionado e um arquivo de áudio estiver selecionado
+    if play_button and selected_mp3:
+        mp3_path = mp3_files[selected_mp3]
+        
+        # Verificação da existência do arquivo
+        if check_file_exists(mp3_path):
+            try:
+                # Abrindo o arquivo de áudio no modo binário
+                with open(mp3_path, "rb") as audio_file:
+                    audio_bytes = audio_file.read()
+                    
+                    # Codificando o arquivo em base64 para embutir no HTML
+                    audio_base64 = base64.b64encode(audio_bytes).decode('utf-8')
+                    
+                    # Controle de loop (repetição)
+                    loop_attr = "loop" if loop else ""
+                    
+                    # Gerando o player de áudio em HTML
+                    audio_html = f"""
+                    <audio id="audio-player" controls autoplay {loop_attr}>
+                      <source src="data:audio/mp3;base64,{audio_base64}" type="audio/mp3">
+                      Seu navegador não suporta o elemento de áudio.
+                    </audio>
+                    """
+                    
+                    # Inserindo o player de áudio na interface
+                    audio_placeholder.markdown(audio_html, unsafe_allow_html=True)
+            
+            except FileNotFoundError:
+                st.sidebar.error(f"Arquivo {mp3_path} não encontrado.")
+            except Exception as e:
+                st.sidebar.error(f"Erro ao carregar o arquivo: {str(e)}")
+    #___________________________________________
 
 # Executar a função principal
 if __name__ == "__main__":
