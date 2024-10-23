@@ -1,21 +1,25 @@
 import streamlit as st
 import pandas as pd
-from sklearn.model_selection import train_test_split, cross_val_score
+from sklearn.model_selection import train_test_split, cross_val_score, GridSearchCV, RandomizedSearchCV
 from sklearn.preprocessing import StandardScaler, MinMaxScaler
+from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor, StackingClassifier
+from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score, mean_squared_error, mean_absolute_percentage_error, r2_score, confusion_matrix
 from xgboost import XGBClassifier, XGBRegressor
-from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
 from catboost import CatBoostClassifier, CatBoostRegressor
-from sklearn.metrics import accuracy_score, f1_score, roc_curve, auc, precision_score, recall_score, confusion_matrix, mean_squared_error, mean_absolute_percentage_error, r2_score
 import matplotlib.pyplot as plt
 import numpy as np
+from imblearn.over_sampling import SMOTE
+from sklearn.ensemble import StackingClassifier
+from sklearn.feature_selection import RFE
+from sklearn.linear_model import Lasso
 
-# Função para carregar os dados e exibir informações iniciais
+# Função para carregar e tratar os dados
 def carregar_dados(file):
     data = pd.read_csv(file)
     st.write("Informações dos Dados:")
     st.write(data.describe())
     
-    # Tratar valores nulos
+    # Verificar e tratar valores nulos
     if data.isnull().sum().sum() > 0:
         st.warning("Os dados contêm valores nulos. Eles serão preenchidos com a média.")
         data.fillna(data.mean(), inplace=True)
@@ -27,26 +31,22 @@ def normalizar_dados(X_train, X_val, X_test, metodo='MinMax'):
     scaler = MinMaxScaler() if metodo == 'MinMax' else StandardScaler()
     return scaler.fit_transform(X_train), scaler.transform(X_val), scaler.transform(X_test)
 
-# Função para calcular o erro médio
-def calcular_erro_medio(y_test, y_pred):
-    return np.mean(np.abs(y_test - y_pred))
-
-# Função para calcular todas as métricas de regressão
+# Função para calcular métricas de regressão
 def calcular_metricas_regressao(y_test, y_pred):
     mse = mean_squared_error(y_test, y_pred)
     mape = mean_absolute_percentage_error(y_test, y_pred)
     r2 = r2_score(y_test, y_pred)
-    erro_medio = calcular_erro_medio(y_test, y_pred)
+    erro_medio = np.mean(np.abs(y_test - y_pred))
     return mse, mape, r2, erro_medio
 
-# Exibição das métricas de comparação
+# Exibir métricas de comparação
 def exibir_metricas(mse, mape, r2, erro_medio):
     st.write(f"**Erro Médio Quadrado (MSE):** {mse:.4f}")
     st.write(f"**Erro Percentual Absoluto Médio (MAPE):** {mape:.4f}")
     st.write(f"**Coeficiente de Determinação (R²):** {r2:.4f}")
     st.write(f"**Erro Médio:** {erro_medio:.4f}")
 
-# Comparar os resultados do modelo com o artigo
+# Comparar com o artigo
 def comparar_com_artigo(mse, mape, r2, erro_medio, mse_artigo, mape_artigo, r2_artigo, erro_medio_artigo):
     st.write("### Comparação com o Artigo:")
     st.write(f"MSE no Artigo: {mse_artigo}, MSE do Modelo: {mse:.4f}")
@@ -54,13 +54,12 @@ def comparar_com_artigo(mse, mape, r2, erro_medio, mse_artigo, mape_artigo, r2_a
     st.write(f"R² no Artigo: {r2_artigo}, R² do Modelo: {r2:.4f}")
     st.write(f"Erro Médio no Artigo: {erro_medio_artigo}, Erro Médio do Modelo: {erro_medio:.4f}")
     
-    # Alerta visual se houver grande diferença entre o artigo e os resultados
     if abs(r2 - r2_artigo) > 0.1:
         st.warning("Atenção: O R² do modelo está significativamente diferente do valor apresentado no artigo.")
     if mse > mse_artigo * 1.2:
         st.warning("O MSE do modelo é muito maior que o do artigo. Considere ajustar os hiperparâmetros.")
 
-# Função para exibir a importância das variáveis (features)
+# Função para exibir a importância das features
 def mostrar_importancia_features(modelo, X):
     if hasattr(modelo, 'feature_importances_'):
         importancias = modelo.feature_importances_
@@ -76,21 +75,40 @@ def mostrar_importancia_features(modelo, X):
         plt.tight_layout()
         st.pyplot(fig)
 
-# Plotar gráfico de dispersão para prever vs. real
-def plotar_dispersao_previsoes(y_test, y_pred):
-    st.write("### Dispersão: Previsões vs Valores Reais")
-    fig, ax = plt.subplots()
-    ax.scatter(y_test, y_pred, edgecolors=(0, 0, 0))
-    ax.plot([min(y_test), max(y_test)], [min(y_test), max(y_test)], 'k--', lw=2)
-    ax.set_xlabel('Valores Reais')
-    ax.set_ylabel('Previsões')
-    plt.title('Previsões vs Valores Reais')
-    st.pyplot(fig)
+# Função para otimização de hiperparâmetros com Grid Search
+def grid_search_model(modelo, X_train, y_train, param_grid):
+    grid_search = GridSearchCV(estimator=modelo, param_grid=param_grid, cv=5)
+    grid_search.fit(X_train, y_train)
+    st.write("Melhores parâmetros encontrados:", grid_search.best_params_)
+    return grid_search.best_estimator_
 
-# Função para configurar o sidebar e permitir inserção manual dos valores do artigo
+# Função para empilhamento de modelos (Stacking)
+def stacking_model(X_train, y_train):
+    estimators = [
+        ('rf', RandomForestClassifier(n_estimators=100)),
+        ('xgb', XGBClassifier(n_estimators=100)),
+        ('cat', CatBoostClassifier(n_estimators=100, verbose=0))
+    ]
+    stacking_model = StackingClassifier(estimators=estimators, final_estimator=XGBClassifier())
+    stacking_model.fit(X_train, y_train)
+    return stacking_model
+
+# Função para detectar e remover outliers usando o Z-Score
+def remover_outliers(X, y, limiar=3):
+    z_scores = np.abs((X - X.mean()) / X.std())
+    filtro = (z_scores < limiar).all(axis=1)
+    return X[filtro], y[filtro]
+
+# Função para aplicar SMOTE para balanceamento
+def aplicar_smote(X_train, y_train):
+    sm = SMOTE(random_state=42)
+    X_res, y_res = sm.fit_resample(X_train, y_train)
+    return X_res, y_res
+
+# Função para configurar o sidebar
 def configurar_sidebar():
     st.sidebar.title("Configurações dos Modelos")
-    modelo_tipo = st.sidebar.selectbox('Escolha o Modelo', ['XGBoost', 'Random Forest', 'CatBoost'])
+    modelo_tipo = st.sidebar.selectbox('Escolha o Modelo', ['XGBoost', 'Random Forest', 'CatBoost', 'Stacking'])
     tipo_problema = st.sidebar.selectbox('Escolha o Tipo de Problema', ['Classificação', 'Regressão'])
     
     n_estimators = st.sidebar.slider('Número de Árvores (n_estimators)', 100, 1000, 300)
@@ -113,21 +131,17 @@ def configurar_sidebar():
 
     return modelo_tipo, tipo_problema, n_estimators, learning_rate, max_depth, early_stopping_rounds, l2_reg, mse_artigo, mape_artigo, r2_artigo, erro_medio_artigo
 
-# Função principal para carregar e processar os dados
+# Função principal
 def main():
-    # Configuração do sidebar
     modelo_tipo, tipo_problema, n_estimators, learning_rate, max_depth, early_stopping_rounds, l2_reg, mse_artigo, mape_artigo, r2_artigo, erro_medio_artigo = configurar_sidebar()
 
-    # Upload do arquivo CSV
     uploaded_file = st.sidebar.file_uploader("Carregue seus dados em CSV", type=["csv"])
 
     if uploaded_file:
-        # Carregar os dados
         data = carregar_dados(uploaded_file)
         st.write("Pré-visualização dos Dados Carregados:")
         st.write(data.head())
 
-        # Separar as variáveis de entrada (X) e a variável alvo (y)
         if 'target' in data.columns:
             X = data.drop(columns=['target'])
             y = data['target']
@@ -135,13 +149,22 @@ def main():
             st.error("O arquivo deve conter a coluna 'target' como variável alvo.")
             st.stop()
 
-        # Dividir os dados em treino, validação e teste
+        # Remover outliers
+        X, y = remover_outliers(X, y)
+
         X_train_full, X_test, y_train_full, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+
         X_train, X_val, y_train, y_val = train_test_split(X_train_full, y_train_full, test_size=0.2, random_state=42)
 
         # Normalizar os dados de entrada
         metodo_normalizacao = st.sidebar.selectbox('Método de Normalização', ['MinMax', 'Z-Score'])
         X_train_scaled, X_val_scaled, X_test_scaled = normalizar_dados(X_train, X_val, X_test, metodo=metodo_normalizacao)
+
+        # Aplicar SMOTE para balanceamento em problemas de classificação
+        if tipo_problema == 'Classificação':
+            aplicar_smote_toggle = st.sidebar.checkbox("Aplicar SMOTE para Balanceamento?", value=False)
+            if aplicar_smote_toggle:
+                X_train_scaled, y_train = aplicar_smote(X_train_scaled, y_train)
 
         # Escolher o modelo baseado no tipo de problema
         if tipo_problema == 'Regressão':
@@ -160,20 +183,37 @@ def main():
                 modelo = XGBRegressor(**modelo_kwargs)
             elif modelo_tipo == 'CatBoost':
                 modelo = CatBoostRegressor(**modelo_kwargs, verbose=0)
-            else:
+            elif modelo_tipo == 'Random Forest':
                 modelo = RandomForestRegressor(**modelo_kwargs)
+            elif modelo_tipo == 'Stacking':
+                modelo = stacking_model(X_train_scaled, y_train)
 
+            # Aplicar Grid Search para otimização de hiperparâmetros
+            if st.sidebar.checkbox('Otimizar Hiperparâmetros com Grid Search?'):
+                param_grid = {
+                    'n_estimators': [100, 300, 500],
+                    'max_depth': [4, 6, 8],
+                    'learning_rate': [0.01, 0.1, 0.3],
+                }
+                modelo = grid_search_model(modelo, X_train_scaled, y_train, param_grid)
+
+            # Treinar o modelo
             modelo.fit(X_train_scaled, y_train)
+
+            # Fazer previsões no conjunto de teste
             y_pred = modelo.predict(X_test_scaled)
 
             # Calcular métricas de desempenho de regressão
             mse, mape, r2, erro_medio = calcular_metricas_regressao(y_test, y_pred)
             exibir_metricas(mse, mape, r2, erro_medio)
 
-            # Comparação com os valores do artigo
+            # Comparar com os valores do artigo
             comparar_com_artigo(mse, mape, r2, erro_medio, mse_artigo, mape_artigo, r2_artigo, erro_medio_artigo)
 
-            # Exibir gráficos
+            # Exibir a importância das features
+            mostrar_importancia_features(modelo, X)
+
+            # Exibir gráfico de dispersão de previsões vs valores reais
             plotar_dispersao_previsoes(y_test, y_pred)
 
         elif tipo_problema == 'Classificação':
@@ -192,10 +232,24 @@ def main():
                 modelo = XGBClassifier(**modelo_kwargs)
             elif modelo_tipo == 'CatBoost':
                 modelo = CatBoostClassifier(**modelo_kwargs, verbose=0)
-            else:
+            elif modelo_tipo == 'Random Forest':
                 modelo = RandomForestClassifier(**modelo_kwargs)
+            elif modelo_tipo == 'Stacking':
+                modelo = stacking_model(X_train_scaled, y_train)
 
+            # Aplicar Grid Search para otimização de hiperparâmetros
+            if st.sidebar.checkbox('Otimizar Hiperparâmetros com Grid Search?'):
+                param_grid = {
+                    'n_estimators': [100, 300, 500],
+                    'max_depth': [4, 6, 8],
+                    'learning_rate': [0.01, 0.1, 0.3],
+                }
+                modelo = grid_search_model(modelo, X_train_scaled, y_train, param_grid)
+
+            # Treinar o modelo
             modelo.fit(X_train_scaled, y_train)
+
+            # Fazer previsões no conjunto de teste
             y_pred = modelo.predict(X_test_scaled)
 
             # Calcular métricas de classificação
@@ -210,6 +264,7 @@ def main():
             st.write(f"**Revocação:** {recall:.4f}")
 
             # Exibir matriz de confusão
+            st.write("### Matriz de Confusão:")
             cm = confusion_matrix(y_test, y_pred)
             fig, ax = plt.subplots()
             cax = ax.matshow(cm, cmap=plt.cm.Blues)
@@ -224,11 +279,19 @@ def main():
 
             st.pyplot(fig)
 
-            # Exibir histogramas das previsões
-            plotar_histograma_previsoes(y_test, y_pred)
+            # Exibir a importância das features
+            mostrar_importancia_features(modelo, X)
 
-        # Exibir a importância das features
-        mostrar_importancia_features(modelo, X)
+# Função para exibir gráfico de dispersão (para regressão)
+def plotar_dispersao_previsoes(y_test, y_pred):
+    st.write("### Dispersão: Previsões vs Valores Reais")
+    fig, ax = plt.subplots()
+    ax.scatter(y_test, y_pred, edgecolors=(0, 0, 0))
+    ax.plot([min(y_test), max(y_test)], [min(y_test), max(y_test)], 'k--', lw=2)
+    ax.set_xlabel('Valores Reais')
+    ax.set_ylabel('Previsões')
+    plt.title('Previsões vs Valores Reais')
+    st.pyplot(fig)
 
 # Executar a função principal
 if __name__ == "__main__":
