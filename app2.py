@@ -93,12 +93,12 @@ def remover_outliers(X, y, limiar=3):
         logging.exception("Erro ao remover outliers")
         return X, y
 
-# Função para preparar os dados (pré-processamento)
+# Função para preparar os dados (pré-processamento) - AJUSTADA
 def preparar_dados(X, y, tipo_problema):
     try:
         # Identificar colunas numéricas e categóricas
-        num_cols = X.select_dtypes(include=['float64', 'int64']).columns
-        cat_cols = X.select_dtypes(include=['object', 'category']).columns
+        num_cols = X.select_dtypes(include=['float64', 'int64']).columns.tolist()
+        cat_cols = X.select_dtypes(include=['object', 'category']).columns.tolist()
 
         # Pipelines para colunas numéricas e categóricas
         num_pipeline = Pipeline([
@@ -111,14 +111,19 @@ def preparar_dados(X, y, tipo_problema):
             ('onehot', OneHotEncoder(handle_unknown='ignore'))
         ])
 
-        # Transformador de colunas
-        preprocessor = ColumnTransformer([
-            ('num', num_pipeline, num_cols),
-            ('cat', cat_pipeline, cat_cols)
-        ])
+        # Lista de transformadores
+        transformers = []
+        if num_cols:
+            transformers.append(('num', num_pipeline, num_cols))
+        if cat_cols:
+            transformers.append(('cat', cat_pipeline, cat_cols))
 
-        # Aplicar pré-processamento
-        X_processed = preprocessor.fit_transform(X)
+        # Transformador de colunas
+        preprocessor = ColumnTransformer(transformers)
+
+        # Ajustar e transformar os dados
+        preprocessor.fit(X)
+        X_processed = preprocessor.transform(X)
         return X_processed, preprocessor
     except Exception as e:
         st.error(f"Erro no pré-processamento dos dados: {e}")
@@ -160,16 +165,36 @@ def exibir_metricas_classificacao(metrics):
     for metric_name, metric_value in metrics.items():
         st.write(f"**{metric_name}:** {metric_value:.4f}")
 
-# Função para exibir a importância das features
+# Função para exibir a importância das features - AJUSTADA
 def mostrar_importancia_features(modelo, X, preprocessor):
     try:
         if hasattr(modelo, 'feature_importances_'):
             importancias = modelo.feature_importances_
+            
             # Obter os nomes das features após o pré-processamento
-            num_features = preprocessor.transformers_[0][2]
-            cat_features = preprocessor.transformers_[1][1]['onehot'].get_feature_names_out()
-            features = np.concatenate([num_features, cat_features])
-            importancia_df = pd.DataFrame({'Features': features, 'Importância': importancias})
+            feature_names = []
+            for name, transformer, cols in preprocessor.transformers_:
+                if name == 'num':
+                    feature_names.extend(cols)
+                elif name == 'cat':
+                    # Verificar se o OneHotEncoder foi ajustado
+                    onehot = transformer.named_steps.get('onehot')
+                    if onehot is not None and hasattr(onehot, 'categories_'):
+                        cat_feature_names = onehot.get_feature_names_out(cols)
+                        feature_names.extend(cat_feature_names)
+                    else:
+                        # Se o OneHotEncoder não foi ajustado ou não há features categóricas
+                        pass
+                else:
+                    # Outros transformadores, se houver
+                    pass
+
+            # Verificar se o número de nomes de features corresponde ao número de importâncias
+            if len(feature_names) != len(importancias):
+                st.warning("O número de features não corresponde ao número de importâncias. Verifique o pré-processamento.")
+                feature_names = [f'Feature {i}' for i in range(len(importancias))]
+
+            importancia_df = pd.DataFrame({'Features': feature_names, 'Importância': importancias})
             importancia_df = importancia_df.sort_values(by='Importância', ascending=False)
             
             st.write("### Importância das Variáveis (Features):")
