@@ -1,13 +1,11 @@
-
-
 import streamlit as st
 import pandas as pd
 from sklearn.model_selection import train_test_split, cross_val_score
 from sklearn.preprocessing import StandardScaler, MinMaxScaler
-from xgboost import XGBClassifier
-from sklearn.ensemble import RandomForestClassifier
-from catboost import CatBoostClassifier
-from sklearn.metrics import accuracy_score, f1_score, roc_curve, auc, precision_score, recall_score, confusion_matrix
+from xgboost import XGBClassifier, XGBRegressor
+from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
+from catboost import CatBoostClassifier, CatBoostRegressor
+from sklearn.metrics import accuracy_score, f1_score, roc_curve, auc, precision_score, recall_score, confusion_matrix, mean_squared_error, mean_absolute_percentage_error, r2_score
 import matplotlib.pyplot as plt
 import numpy as np
 
@@ -44,33 +42,41 @@ def normalizar_dados(X_train, X_val, X_test, metodo='MinMax'):
 def treinar_modelo(modelo_tipo, X_train, y_train, X_val, y_val, **kwargs):
     if modelo_tipo == 'XGBoost':
         modelo = XGBClassifier(**kwargs)
-        # Treinamento com parada precoce
         modelo.fit(X_train, y_train, eval_set=[(X_val, y_val)], early_stopping_rounds=kwargs.get('early_stopping_rounds', 10), verbose=False)
     elif modelo_tipo == 'CatBoost':
         modelo = CatBoostClassifier(**kwargs, verbose=0)
-        # Treinamento com parada precoce
         modelo.fit(X_train, y_train, eval_set=(X_val, y_val), early_stopping_rounds=kwargs.get('early_stopping_rounds', 10))
     else:
         modelo = RandomForestClassifier(**kwargs)
-        # Random Forest não suporta parada precoce da mesma forma
         modelo.fit(X_train, y_train)
-
     return modelo
 
-# Função para realizar a validação cruzada e retornar o score médio
+# Função para calcular as métricas de regressão
+def calcular_metricas_regressao(y_test, y_pred):
+    mse = mean_squared_error(y_test, y_pred)
+    mape = mean_absolute_percentage_error(y_test, y_pred)
+    r2 = r2_score(y_test, y_pred)
+    return mse, mape, r2
+
+# Exibir métricas de comparação
+def exibir_metricas_comparacao(mse, mape, r2):
+    st.write(f"Erro Médio Quadrado (MSE): {mse:.4f}")
+    st.write(f"Erro Percentual Absoluto Médio (MAPE): {mape:.4f}")
+    st.write(f"Coeficiente de Determinação (R²): {r2:.4f}")
+
+# Função para validação cruzada e score médio
 def validacao_cruzada(modelo, X_train, y_train, cv=5):
     scores = cross_val_score(modelo, X_train, y_train, cv=cv, scoring='accuracy')
     return np.mean(scores), np.std(scores)
 
-# Função para exibir a importância das variáveis (features)
+# Exibir importância das features
 def mostrar_importancia_features(modelo, X):
     if hasattr(modelo, 'feature_importances_'):
         importancias = modelo.feature_importances_
         features = X.columns
         importancia_df = pd.DataFrame({'Features': features, 'Importância': importancias})
         importancia_df = importancia_df.sort_values(by='Importância', ascending=False)
-
-        # Exibir gráfico de importância das features
+        
         st.write("Importância das Variáveis (Features):")
         fig, ax = plt.subplots()
         importancia_df.plot(kind='bar', x='Features', y='Importância', legend=False, ax=ax)
@@ -79,11 +85,11 @@ def mostrar_importancia_features(modelo, X):
         plt.tight_layout()
         st.pyplot(fig)
 
-# Função para plotar a curva ROC
+# Plotar curva ROC
 def plotar_curva_roc(modelo, X_test_scaled, y_test):
-    if hasattr(modelo, "predict_proba"):  # Checar se o modelo tem predict_proba
+    if hasattr(modelo, "predict_proba"):
         y_score = modelo.predict_proba(X_test_scaled)
-        if y_score.shape[1] == 2:  # Problema binário
+        if y_score.shape[1] == 2:  # Classificação binária
             y_score = y_score[:, 1]
             fpr, tpr, _ = roc_curve(y_test, y_score)
             roc_auc = auc(fpr, tpr)
@@ -115,7 +121,7 @@ def plotar_curva_roc(modelo, X_test_scaled, y_test):
     else:
         st.warning("Este modelo não suporta a previsão de probabilidades para a curva ROC.")
 
-# Função para plotar histogramas das previsões
+# Plotar histogramas das previsões
 def plotar_histograma_previsoes(y_test, y_pred):
     st.write("Histograma das Previsões vs Valores Reais:")
     fig, ax = plt.subplots()
@@ -128,10 +134,13 @@ def plotar_histograma_previsoes(y_test, y_pred):
     st.pyplot(fig)
 
 # Configuração da barra lateral
-st.sidebar.title("Configurações dos Modelos de Classificação")
+st.sidebar.title("Configurações dos Modelos")
 
 # Escolha do modelo
 modelo_tipo = st.sidebar.selectbox('Escolha o Modelo', ['XGBoost', 'Random Forest', 'CatBoost'])
+
+# Escolha de Classificação ou Regressão
+tipo_problema = st.sidebar.selectbox('Escolha o Tipo de Problema', ['Classificação', 'Regressão'])
 
 # Hiperparâmetros configuráveis para cada modelo
 n_estimators = st.sidebar.slider('Número de Árvores (n_estimators)', 100, 1000, 300)
@@ -143,6 +152,7 @@ l2_reg = st.sidebar.slider('Regularização L2 (Weight Decay)', 0.01, 1.0, 0.1)
 # Hiperparâmetros específicos para o XGBoost
 if modelo_tipo == 'XGBoost':
     subsample = st.sidebar.slider('Subsample (Taxa de Amostragem)', 0.5, 1.0, 0.8)
+
     colsample_bytree = st.sidebar.slider('ColSample ByTree (Taxa de Colunas por Árvore)', 0.5, 1.0, 0.8)
 
 # Escolha do método de normalização
@@ -164,7 +174,7 @@ if uploaded_file:
     else:
         st.error("O arquivo deve conter a coluna 'target' como variável alvo.")
         st.stop()
-    
+
     # Dividir os dados em conjuntos de treino, validação e teste
     X_train_full, X_test, y_train_full, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
     X_train, X_val, y_train, y_val = train_test_split(X_train_full, y_train_full, test_size=0.2, random_state=42)
@@ -172,69 +182,93 @@ if uploaded_file:
     # Normalizar os dados de entrada
     X_train_scaled, X_val_scaled, X_test_scaled = normalizar_dados(X_train, X_val, X_test, metodo=metodo_normalizacao)
 
-    # Treinar o modelo selecionado com parada precoce
-    modelo_kwargs = {
-        'n_estimators': n_estimators,
-        'learning_rate': learning_rate,
-        'max_depth': max_depth,
-        'reg_lambda': l2_reg
-    }
+    # Escolher modelo com base no tipo de problema
+    if tipo_problema == 'Classificação':
+        # Treinar o modelo selecionado com os parâmetros para classificação
+        modelo_kwargs = {
+            'n_estimators': n_estimators,
+            'learning_rate': learning_rate,
+            'max_depth': max_depth,
+            'reg_lambda': l2_reg
+        }
 
-    # Adicionar hiperparâmetros específicos para o XGBoost, se for o caso
-    if modelo_tipo == 'XGBoost':
-        modelo_kwargs['subsample'] = subsample
-        modelo_kwargs['colsample_bytree'] = colsample_bytree
+        if modelo_tipo == 'XGBoost':
+            modelo_kwargs['subsample'] = subsample
+            modelo_kwargs['colsample_bytree'] = colsample_bytree
+            modelo = XGBClassifier(**modelo_kwargs)
+        elif modelo_tipo == 'CatBoost':
+            modelo = CatBoostClassifier(**modelo_kwargs, verbose=0)
+        else:
+            modelo = RandomForestClassifier(**modelo_kwargs)
 
-    # Treinar o modelo selecionado com os parâmetros
-    modelo = treinar_modelo(
-        modelo_tipo, 
-        X_train_scaled, y_train, 
-        X_val_scaled, y_val, 
-        early_stopping_rounds=early_stopping_rounds, 
-        **modelo_kwargs
-    )
+        modelo.fit(X_train_scaled, y_train)
+        y_pred = modelo.predict(X_test_scaled)
 
-    # Fazer previsões no conjunto de teste
-    y_pred = modelo.predict(X_test_scaled)
+        # Calcular métricas de classificação
+        acc = accuracy_score(y_test, y_pred)
+        f1 = f1_score(y_test, y_pred, average='weighted')
+        precision = precision_score(y_test, y_pred, average='weighted')
+        recall = recall_score(y_test, y_pred, average='weighted')
 
-    # Calcular métricas de desempenho
-    acc = accuracy_score(y_test, y_pred)
-    f1 = f1_score(y_test, y_pred, average='weighted')
-    precision = precision_score(y_test, y_pred, average='weighted')
-    recall = recall_score(y_test, y_pred, average='weighted')
+        st.write(f"Acurácia no Conjunto de Teste: {acc:.4f}")
+        st.write(f"F1 Score: {f1:.4f}")
+        st.write(f"Precisão: {precision:.4f}")
+        st.write(f"Revocação: {recall:.4f}")
 
-    st.write(f"Acurácia no Conjunto de Teste: {acc:.4f}")
-    st.write(f"F1 Score: {f1:.4f}")
-    st.write(f"Precisão: {precision:.4f}")
-    st.write(f"Revocação: {recall:.4f}")
+        # Realizar a validação cruzada
+        cv_acc_mean, cv_acc_std = validacao_cruzada(modelo, X_train_scaled, y_train)
+        st.write(f"Média da Acurácia na Validação Cruzada: {cv_acc_mean:.4f} ± {cv_acc_std:.4f}")
 
-    # Realizar a validação cruzada e exibir os resultados
-    st.write("Validação Cruzada (5-fold):")
-    cv_acc_mean, cv_acc_std = validacao_cruzada(modelo, X_train_scaled, y_train)
-    st.write(f"Média da Acurácia na Validação Cruzada: {cv_acc_mean:.4f} ± {cv_acc_std:.4f}")
+        # Plotar a matriz de confusão
+        st.write("Matriz de Confusão:")
+        cm = confusion_matrix(y_test, y_pred)
+        fig, ax = plt.subplots()
+        cax = ax.matshow(cm, cmap=plt.cm.Blues)
+        plt.title('Matriz de Confusão')
+        fig.colorbar(cax)
+        plt.ylabel('Verdadeiros')
+        plt.xlabel('Previstos')
 
-    # Plotar previsões versus valores reais em uma matriz de confusão
-    st.write("Matriz de Confusão:")
-    cm = confusion_matrix(y_test, y_pred)
-    fig, ax = plt.subplots()
-    cax = ax.matshow(cm, cmap=plt.cm.Blues)
-    plt.title('Matriz de Confusão')
-    fig.colorbar(cax)
-    plt.ylabel('Verdadeiros')
-    plt.xlabel('Previstos')
+        for i in range(cm.shape[0]):
+            for j in range(cm.shape[1]):
+                plt.text(j, i, str(cm[i][j]), va='center', ha='center')
 
-    for i in range(cm.shape[0]):
-        for j in range(cm.shape[1]):
-            plt.text(j, i, str(cm[i][j]), va='center', ha='center')
+        st.pyplot(fig)
 
-    st.pyplot(fig)
+        # Plotar a curva ROC
+        st.write("Curva ROC:")
+        plotar_curva_roc(modelo, X_test_scaled, y_test)
 
-    # Exibir a importância das features (se disponível)
+        # Plotar histograma das previsões
+        plotar_histograma_previsoes(y_test, y_pred)
+
+    else:
+        # Treinar o modelo selecionado com os parâmetros para regressão
+        modelo_kwargs = {
+            'n_estimators': n_estimators,
+            'learning_rate': learning_rate,
+            'max_depth': max_depth,
+            'reg_lambda': l2_reg
+        }
+
+        if modelo_tipo == 'XGBoost':
+            modelo_kwargs['subsample'] = subsample
+            modelo_kwargs['colsample_bytree'] = colsample_bytree
+            modelo = XGBRegressor(**modelo_kwargs)
+        elif modelo_tipo == 'CatBoost':
+            modelo = CatBoostRegressor(**modelo_kwargs, verbose=0)
+        else:
+            modelo = RandomForestRegressor(**modelo_kwargs)
+
+        modelo.fit(X_train_scaled, y_train)
+        y_pred = modelo.predict(X_test_scaled)
+
+        # Calcular métricas de regressão
+        mse, mape, r2 = calcular_metricas_regressao(y_test, y_pred)
+        exibir_metricas_comparacao(mse, mape, r2)
+
+        # Plotar histograma das previsões para regressão
+        plotar_histograma_previsoes(y_test, y_pred)
+
+    # Exibir a importância das features
     mostrar_importancia_features(modelo, X)
-
-    # Plotar a curva ROC
-    st.write("Curva ROC:")
-    plotar_curva_roc(modelo, X_test_scaled, y_test)
-
-    # Plotar histograma das previsões
-    plotar_histograma_previsoes(y_test, y_pred)
