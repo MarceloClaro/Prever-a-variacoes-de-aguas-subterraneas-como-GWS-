@@ -93,7 +93,7 @@ def remover_outliers(X, y, limiar=3):
         logging.exception("Erro ao remover outliers")
         return X, y
 
-# Função para preparar os dados (pré-processamento) - AJUSTADA
+# Função para preparar os dados (pré-processamento)
 def preparar_dados(X, y, tipo_problema):
     try:
         # Identificar colunas numéricas e categóricas
@@ -165,7 +165,7 @@ def exibir_metricas_classificacao(metrics):
     for metric_name, metric_value in metrics.items():
         st.write(f"**{metric_name}:** {metric_value:.4f}")
 
-# Função para exibir a importância das features - AJUSTADA
+# Função para exibir a importância das features
 def mostrar_importancia_features(modelo, X, preprocessor):
     try:
         if hasattr(modelo, 'feature_importances_'):
@@ -604,102 +604,34 @@ def main():
             - **Justificativa Científica**:
               - A comparação com a literatura existente é essencial para validar o modelo e contextualizar os resultados.
               - Identifica áreas onde o modelo pode estar subperformando ou superando pesquisas anteriores.
-            
-            ## Fluxo Geral do Aplicativo
-            
-            1. **Carregamento dos Dados**:
-               - O usuário carrega um arquivo CSV contendo os dados.
-               - O aplicativo exibe uma pré-visualização dos dados.
-            
-            2. **Configurações Iniciais**:
-               - O usuário seleciona a coluna alvo (variável a ser prevista).
-               - Opções para indicar se os dados contêm colunas de data ou coordenadas geográficas.
-               - Escolha do tipo de problema (Regressão ou Classificação) e do modelo a ser utilizado.
-            
-            3. **Pré-Processamento e Engenharia de Features**:
-               - Extração de características temporais e codificação de coordenadas, se aplicável.
-               - Remoção de outliers (opcional).
-               - Aplicação do pipeline de pré-processamento.
-            
-            4. **Divisão dos Dados**:
-               - Divisão em conjuntos de treinamento e teste.
-               - Opção de utilizar validação cruzada temporal para dados sequenciais.
-            
-            5. **Treinamento do Modelo**:
-               - Treinamento do modelo selecionado com os hiperparâmetros escolhidos.
-               - Opção de otimizar os hiperparâmetros usando RandomizedSearchCV.
-            
-            6. **Avaliação do Modelo**:
-               - Cálculo de métricas de desempenho.
-               - Visualização de gráficos e importância das features.
-               - Comparação com resultados de artigos, se os valores forem fornecidos.
-            
-            7. **Interatividade e Ajustes**:
-               - O usuário pode ajustar hiperparâmetros, selecionar diferentes modelos e reexecutar o treinamento para melhorar os resultados.
-            
-            ## Considerações Científicas Adicionais
-            
-            - **Importância da Engenharia de Features**:
-              - A incorporação de características temporais e espaciais é fundamental em problemas relacionados a recursos hídricos.
-              - Eventos climáticos, padrões sazonais e localização geográfica influenciam diretamente as variações nas águas subterrâneas.
-            
-            - **Seleção de Modelos**:
-              - Modelos baseados em árvores (como Random Forest e XGBoost) são adequados para lidar com dados não lineares e interações complexas entre features.
-              - O uso de modelos ensemble (como o stacking) pode capturar diferentes aspectos dos dados e melhorar a generalização.
-            
-            - **Validação Cruzada Temporal**:
-              - Em séries temporais, é crucial evitar o vazamento de informações do futuro para o passado.
-              - O uso de `TimeSeriesSplit` respeita a ordem temporal dos dados, proporcionando uma avaliação mais realista.
-            
-            - **Interpretação dos Resultados**:
-              - Além de métricas quantitativas, a análise visual dos resultados é essencial para entender o comportamento do modelo.
-              - A identificação de padrões nos resíduos ou discrepâncias nas previsões pode levar a melhorias no modelo ou no pré-processamento.
-            
-            ## Conclusão
-            
-            O código e o aplicativo desenvolvidos proporcionam uma ferramenta abrangente para a previsão de variações nas águas subterrâneas, integrando técnicas avançadas de aprendizado de máquina com considerações específicas do domínio. A flexibilidade do aplicativo permite que usuários com diferentes níveis de conhecimento possam utilizá-lo para explorar seus dados, ajustar modelos e interpretar resultados.
-            
-            Ao abordar meticulosamente as etapas de preparação dos dados, seleção e treinamento de modelos, e avaliação de desempenho, o código serve não apenas como uma aplicação prática, mas também como um estudo detalhado das melhores práticas em aprendizado de máquina aplicado a problemas ambientais e hidrogeológicos.
-            
-            ## Recomendações para Uso e Melhoria
-            
-            - **Dados de Qualidade**: A precisão das previsões depende da qualidade e relevância dos dados. É recomendável utilizar conjuntos de dados atualizados e representativos.
-            
-            - **Exploração de Outros Modelos**: Embora o aplicativo ofereça vários modelos, a exploração de redes neurais ou outros algoritmos pode ser benéfica, dependendo do problema.
-            
-            - **Engenharia de Features Adicional**: A inclusão de outras variáveis, como uso do solo, precipitação, evapotranspiração, entre outras, pode melhorar o desempenho.
-            
-            - **Validação Externa**: Testar o modelo em dados de diferentes regiões ou períodos pode ajudar a avaliar sua capacidade de generalização.
-            
-            - **Colaboração Multidisciplinar**: Trabalhar em conjunto com especialistas em hidrologia e geologia pode fornecer insights valiosos para a interpretação dos resultados e orientação do modelo.
             """)
-    
-        #__________________________________________
-    
+
+        # Configurar o sidebar e obter as configurações
         modelo_tipo, tipo_problema, n_estimators, learning_rate, max_depth, l2_reg, subsample, colsample_bytree, mse_artigo, mape_artigo, r2_artigo, erro_medio_artigo = configurar_sidebar()
-    
+
+        # Upload de arquivo CSV
         uploaded_file = st.sidebar.file_uploader("Carregue seus dados em CSV", type=["csv"])
-    
+
         if uploaded_file:
             data = carregar_dados(uploaded_file)
             if data is not None:
                 st.write("### Pré-visualização dos Dados Carregados:")
                 st.write(data.head())
-    
+
                 # Opção para selecionar a coluna de data
                 if st.sidebar.checkbox("Os dados contêm coluna de data?"):
                     coluna_tempo = st.sidebar.selectbox('Selecione a coluna de data', data.columns)
                     data = extrair_caracteristicas_temporais(data, coluna_tempo)
-    
+
                 # Opção para selecionar colunas de latitude e longitude
                 if st.sidebar.checkbox("Os dados contêm coordenadas geográficas?"):
                     coluna_latitude = st.sidebar.selectbox('Selecione a coluna de Latitude', data.columns)
                     coluna_longitude = st.sidebar.selectbox('Selecione a coluna de Longitude', data.columns)
                     data = codificar_coordenadas(data, coluna_latitude, coluna_longitude)
-    
-                # Adicionar no sidebar a opção para selecionar a variável alvo
+
+                # Selecionar a coluna alvo
                 coluna_alvo = st.sidebar.selectbox('Selecione a coluna alvo (target)', data.columns)
-    
+
                 # Usar a coluna selecionada como variável alvo
                 if coluna_alvo in data.columns:
                     X = data.drop(columns=[coluna_alvo])
@@ -714,12 +646,12 @@ def main():
                 if remover_outliers_toggle:
                     X, y = remover_outliers(X, y)
                     st.write("### Outliers removidos.")
-    
+
                 # Pré-processar os dados
                 X_processed, preprocessor = preparar_dados(X, y, tipo_problema)
                 if X_processed is None:
                     st.stop()
-    
+
                 # Dividir os dados em conjuntos de treino e teste
                 if st.sidebar.checkbox("Usar Validação Cruzada Temporal?", value=False):
                     time_series = True
@@ -728,7 +660,7 @@ def main():
                 else:
                     time_series = False
                     X_train_full, X_test, y_train_full, y_test = train_test_split(X_processed, y, test_size=0.2, random_state=42)
-    
+
                 # Aplicar SMOTE para balanceamento em problemas de classificação
                 if tipo_problema == 'Classificação' and not time_series:
                     aplicar_smote_toggle = st.sidebar.checkbox("Aplicar SMOTE para Balanceamento?", value=False)
@@ -736,7 +668,7 @@ def main():
                         sm = SMOTE(random_state=42)
                         X_train_full, y_train_full = sm.fit_resample(X_train_full, y_train_full)
                         st.write("### SMOTE aplicado para balanceamento das classes.")
-    
+
                 # Escolher o modelo baseado no tipo de problema
                 if tipo_problema == 'Regressão':
                     # Definir parâmetros do modelo de regressão
@@ -749,7 +681,7 @@ def main():
                     if subsample and colsample_bytree:
                         modelo_kwargs['subsample'] = subsample
                         modelo_kwargs['colsample_bytree'] = colsample_bytree
-    
+
                     # Treinamento do modelo de regressão
                     if modelo_tipo == 'XGBoost':
                         modelo = XGBRegressor(**modelo_kwargs, random_state=42)
@@ -762,7 +694,7 @@ def main():
                     
                     if modelo is None:
                         st.stop()
-    
+
                     # Aplicar Randomized Search para otimização de hiperparâmetros
                     if st.sidebar.checkbox('Otimizar Hiperparâmetros?'):
                         param_distributions = {
@@ -771,7 +703,7 @@ def main():
                             'learning_rate': [0.01, 0.05, 0.1, 0.2],
                         }
                         modelo = otimizar_modelo(modelo, X_train_full, y_train_full, param_distributions, tipo_problema)
-    
+
                     # Treinar o modelo usando Cross-Validation
                     if time_series:
                         scores = cross_val_score(modelo, X_processed, y, cv=tscv, scoring='neg_mean_squared_error')
@@ -780,34 +712,34 @@ def main():
                         cv = KFold(n_splits=5, shuffle=True, random_state=42)
                         scores = cross_val_score(modelo, X_train_full, y_train_full, cv=cv, scoring='neg_mean_squared_error')
                         st.write(f"### Validação Cruzada (MSE): {-np.mean(scores):.4f} (+/- {np.std(scores):.4f})")
-    
+
                         # Ajustar o modelo nos dados completos de treinamento
                         modelo.fit(X_train_full, y_train_full)
                         logging.info("Modelo de regressão treinado com sucesso.")
-    
+
                         # Fazer previsões no conjunto de teste
                         y_pred = modelo.predict(X_test)
-    
+
                         # Calcular métricas de desempenho de regressão
                         mse, rmse, mape, mae, r2, erro_medio = calcular_metricas_regressao(y_test, y_pred)
                         exibir_metricas_regressao(mse, rmse, mape, mae, r2, erro_medio)
-    
+
                         # Comparar com os valores do artigo (se fornecidos)
                         if mse_artigo > 0:
                             comparar_com_artigo(mse, mape, r2, erro_medio, mse_artigo, mape_artigo, r2_artigo, erro_medio_artigo)
-    
+
                         # Exibir a importância das features
                         mostrar_importancia_features(modelo, X, preprocessor)
-    
+
                         # Exibir gráfico de dispersão de previsões vs valores reais
                         plotar_dispersao_previsoes(y_test, y_pred)
-    
+
                         # Exibir gráfico de resíduos
                         plotar_residuos(y_test, y_pred)
-    
+
                         # Exibir gráfico de comparação de previsões com valores reais
                         plotar_comparacao_previsoes(y_test, y_pred)
-    
+
                 elif tipo_problema == 'Classificação':
                     # Definir parâmetros do modelo de classificação
                     modelo_kwargs = {
@@ -819,7 +751,7 @@ def main():
                     if subsample and colsample_bytree:
                         modelo_kwargs['subsample'] = subsample
                         modelo_kwargs['colsample_bytree'] = colsample_bytree
-    
+
                     # Treinamento do modelo de classificação
                     if modelo_tipo == 'XGBoost':
                         modelo = XGBClassifier(**modelo_kwargs, use_label_encoder=False, eval_metric='logloss', random_state=42)
@@ -832,7 +764,7 @@ def main():
                     
                     if modelo is None:
                         st.stop()
-    
+
                     # Aplicar Randomized Search para otimização de hiperparâmetros
                     if st.sidebar.checkbox('Otimizar Hiperparâmetros?'):
                         param_distributions = {
@@ -841,7 +773,7 @@ def main():
                             'learning_rate': [0.01, 0.05, 0.1, 0.2],
                         }
                         modelo = otimizar_modelo(modelo, X_train_full, y_train_full, param_distributions, tipo_problema)
-    
+
                     # Treinar o modelo usando Cross-Validation
                     if time_series:
                         scores = cross_val_score(modelo, X_processed, y, cv=tscv, scoring='f1_weighted')
@@ -850,36 +782,35 @@ def main():
                         cv = KFold(n_splits=5, shuffle=True, random_state=42)
                         scores = cross_val_score(modelo, X_train_full, y_train_full, cv=cv, scoring='f1_weighted')
                         st.write(f"### Validação Cruzada (F1 Score): {np.mean(scores):.4f} (+/- {np.std(scores):.4f})")
-    
+
                         # Ajustar o modelo nos dados completos de treinamento
                         modelo.fit(X_train_full, y_train_full)
                         logging.info("Modelo de classificação treinado com sucesso.")
-    
+
                         # Fazer previsões no conjunto de teste
                         y_pred = modelo.predict(X_test)
                         y_proba = modelo.predict_proba(X_test)
-    
+
                         # Calcular métricas de classificação
                         metrics = calcular_metricas_classificacao(y_test, y_pred, y_proba)
                         exibir_metricas_classificacao(metrics)
-    
+
                         # Exibir relatório de classificação
                         st.write("### Relatório de Classificação:")
                         st.text(classification_report(y_test, y_pred))
-    
+
                         # Exibir matriz de confusão
                         plotar_matriz_confusao(y_test, y_pred)
-    
+
                         # Exibir curva ROC (para problemas binários)
                         if len(np.unique(y_test)) == 2:
                             plotar_curva_roc(y_test, y_proba)
-    
+
                         # Exibir a importância das features
                         mostrar_importancia_features(modelo, X, preprocessor)
-    
         else:
             st.write("Por favor, carregue um arquivo CSV para começar.")
-    
+
         # Imagem e Contatos
         if os.path.exists("eu.ico"):
             st.sidebar.image("eu.ico", width=80)
@@ -961,79 +892,79 @@ def main():
                 except Exception as e:
                     st.sidebar.error(f"Erro ao carregar o arquivo: {str(e)}")
                     logging.exception("Erro ao carregar o arquivo de áudio.")
+
+# Função para exibir gráfico de dispersão (para regressão)
+def plotar_dispersao_previsoes(y_test, y_pred):
+    st.write("### Dispersão: Previsões vs Valores Reais")
+    fig, ax = plt.subplots()
+    ax.scatter(y_test, y_pred, edgecolors=(0, 0, 0))
+    ax.plot([y_test.min(), y_test.max()], [y_test.min(), y_test.max()], 'k--', lw=2)
+    ax.set_xlabel('Valores Reais')
+    ax.set_ylabel('Previsões')
+    plt.title('Previsões vs Valores Reais')
+    st.pyplot(fig)
+
+# Função para plotar resíduos
+def plotar_residuos(y_test, y_pred):
+    st.write("### Resíduos: Valores Reais vs Resíduos")
+    residuos = y_test - y_pred
+    fig, ax = plt.subplots()
+    ax.scatter(y_pred, residuos, edgecolors=(0, 0, 0))
+    ax.axhline(y=0, color='r', linestyle='--')
+    ax.set_xlabel('Previsões')
+    ax.set_ylabel('Resíduos')
+    plt.title('Resíduos vs Previsões')
+    st.pyplot(fig)
+
+# Função para plotar matriz de confusão
+def plotar_matriz_confusao(y_test, y_pred):
+    st.write("### Matriz de Confusão:")
+    cm = confusion_matrix(y_test, y_pred)
+    fig, ax = plt.subplots()
+    cax = ax.matshow(cm, cmap=plt.cm.Blues)
+    plt.title('Matriz de Confusão')
+    fig.colorbar(cax)
+    unique_classes = np.unique(y_test)
+    ax.set_xticks(range(len(unique_classes)))
+    ax.set_xticklabels(unique_classes, rotation=45)
+    ax.set_yticks(range(len(unique_classes)))
+    ax.set_yticklabels(unique_classes)
+    plt.xlabel('Previstos')
+    plt.ylabel('Verdadeiros')
+    for i in range(cm.shape[0]):
+        for j in range(cm.shape[1]):
+            ax.text(j, i, format(cm[i, j], 'd'), ha='center', va='center', color='red')
+    st.pyplot(fig)
+
+# Função para plotar curva ROC
+def plotar_curva_roc(y_test, y_proba):
+    st.write("### Curva ROC:")
+    fpr, tpr, thresholds = roc_curve(y_test, y_proba[:, 1])
+    roc_auc = auc(fpr, tpr)
+    fig, ax = plt.subplots()
+    ax.plot(fpr, tpr, color='darkorange', lw=2, label=f'Curva ROC (área = {roc_auc:.2f})')
+    ax.plot([0, 1], [0, 1], color='navy', lw=2, linestyle='--')
+    ax.set_xlim([0.0, 1.0])
+    ax.set_ylim([0.0, 1.05])
+    ax.set_xlabel('Taxa de Falso Positivo')
+    ax.set_ylabel('Taxa de Verdadeiro Positivo')
+    ax.set_title('Receiver Operating Characteristic')
+    ax.legend(loc="lower right")
+    st.pyplot(fig)
+
+# Função para comparar com o artigo
+def comparar_com_artigo(mse, mape, r2, erro_medio, mse_artigo, mape_artigo, r2_artigo, erro_medio_artigo):
+    st.write("### Comparação com o Artigo:")
+    st.write(f"**MSE no Artigo:** {mse_artigo}, **MSE do Modelo:** {mse:.4f}")
+    st.write(f"**MAPE no Artigo:** {mape_artigo}, **MAPE do Modelo:** {mape:.4f}")
+    st.write(f"**R² no Artigo:** {r2_artigo}, **R² do Modelo:** {r2:.4f}")
+    st.write(f"**Erro Médio no Artigo:** {erro_medio_artigo}, **Erro Médio do Modelo:** {erro_medio:.4f}")
     
-    # Função para exibir gráfico de dispersão (para regressão)
-    def plotar_dispersao_previsoes(y_test, y_pred):
-        st.write("### Dispersão: Previsões vs Valores Reais")
-        fig, ax = plt.subplots()
-        ax.scatter(y_test, y_pred, edgecolors=(0, 0, 0))
-        ax.plot([y_test.min(), y_test.max()], [y_test.min(), y_test.max()], 'k--', lw=2)
-        ax.set_xlabel('Valores Reais')
-        ax.set_ylabel('Previsões')
-        plt.title('Previsões vs Valores Reais')
-        st.pyplot(fig)
+    if abs(r2 - r2_artigo) > 0.1:
+        st.warning("Atenção: O R² do modelo está significativamente diferente do valor apresentado no artigo.")
+    if mse > mse_artigo * 1.2:
+        st.warning("O MSE do modelo é muito maior que o do artigo. Considere ajustar os hiperparâmetros.")
 
-    # Função para plotar resíduos
-    def plotar_residuos(y_test, y_pred):
-        st.write("### Resíduos: Valores Reais vs Resíduos")
-        residuos = y_test - y_pred
-        fig, ax = plt.subplots()
-        ax.scatter(y_pred, residuos, edgecolors=(0, 0, 0))
-        ax.axhline(y=0, color='r', linestyle='--')
-        ax.set_xlabel('Previsões')
-        ax.set_ylabel('Resíduos')
-        plt.title('Resíduos vs Previsões')
-        st.pyplot(fig)
-
-    # Função para plotar matriz de confusão
-    def plotar_matriz_confusao(y_test, y_pred):
-        st.write("### Matriz de Confusão:")
-        cm = confusion_matrix(y_test, y_pred)
-        fig, ax = plt.subplots()
-        cax = ax.matshow(cm, cmap=plt.cm.Blues)
-        plt.title('Matriz de Confusão')
-        fig.colorbar(cax)
-        unique_classes = np.unique(y_test)
-        ax.set_xticks(range(len(unique_classes)))
-        ax.set_xticklabels(unique_classes, rotation=45)
-        ax.set_yticks(range(len(unique_classes)))
-        ax.set_yticklabels(unique_classes)
-        plt.xlabel('Previstos')
-        plt.ylabel('Verdadeiros')
-        for i in range(cm.shape[0]):
-            for j in range(cm.shape[1]):
-                ax.text(j, i, format(cm[i, j], 'd'), ha='center', va='center', color='red')
-        st.pyplot(fig)
-
-    # Função para plotar curva ROC
-    def plotar_curva_roc(y_test, y_proba):
-        st.write("### Curva ROC:")
-        fpr, tpr, thresholds = roc_curve(y_test, y_proba[:, 1])
-        roc_auc = auc(fpr, tpr)
-        fig, ax = plt.subplots()
-        ax.plot(fpr, tpr, color='darkorange', lw=2, label=f'Curva ROC (área = {roc_auc:.2f})')
-        ax.plot([0, 1], [0, 1], color='navy', lw=2, linestyle='--')
-        ax.set_xlim([0.0, 1.0])
-        ax.set_ylim([0.0, 1.05])
-        ax.set_xlabel('Taxa de Falso Positivo')
-        ax.set_ylabel('Taxa de Verdadeiro Positivo')
-        ax.set_title('Receiver Operating Characteristic')
-        ax.legend(loc="lower right")
-        st.pyplot(fig)
-
-    # Função para comparar com o artigo
-    def comparar_com_artigo(mse, mape, r2, erro_medio, mse_artigo, mape_artigo, r2_artigo, erro_medio_artigo):
-        st.write("### Comparação com o Artigo:")
-        st.write(f"**MSE no Artigo:** {mse_artigo}, **MSE do Modelo:** {mse:.4f}")
-        st.write(f"**MAPE no Artigo:** {mape_artigo}, **MAPE do Modelo:** {mape:.4f}")
-        st.write(f"**R² no Artigo:** {r2_artigo}, **R² do Modelo:** {r2:.4f}")
-        st.write(f"**Erro Médio no Artigo:** {erro_medio_artigo}, **Erro Médio do Modelo:** {erro_medio:.4f}")
-        
-        if abs(r2 - r2_artigo) > 0.1:
-            st.warning("Atenção: O R² do modelo está significativamente diferente do valor apresentado no artigo.")
-        if mse > mse_artigo * 1.2:
-            st.warning("O MSE do modelo é muito maior que o do artigo. Considere ajustar os hiperparâmetros.")
-
-    # Executar a função principal
-    if __name__ == "__main__":
-        main()
+# Executar a função principal
+if __name__ == "__main__":
+    main()
