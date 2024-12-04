@@ -268,13 +268,40 @@ def configurar_sidebar():
     max_depth = st.sidebar.slider('Profundidade Máxima (max_depth)', 3, 20, 6)
     l2_reg = st.sidebar.slider('Regularização L2 (Weight Decay)', 0.0, 1.0, 0.1)
     
+    # Adição de mais hiperparâmetros específicos
+    if modelo_tipo == 'XGBoost':
+        gamma = st.sidebar.slider('Gamma', 0.0, 5.0, 0.0, step=0.1)
+        min_child_weight = st.sidebar.slider('Min Child Weight', 1, 10, 1)
+        subsample = st.sidebar.slider('Subsample (Taxa de Amostragem)', 0.5, 1.0, 0.8, step=0.05)
+        colsample_bytree = st.sidebar.slider('ColSample ByTree (Taxa de Colunas por Árvore)', 0.5, 1.0, 0.8, step=0.05)
+        reg_alpha = st.sidebar.slider('Regularização Alpha', 0.0, 1.0, 0.0, step=0.1)
+        reg_lambda = st.sidebar.slider('Regularização Lambda', 0.0, 1.0, 1.0, step=0.1)
+    elif modelo_tipo == 'Random Forest':
+        min_samples_split = st.sidebar.slider('Min Samples Split', 2, 20, 2)
+        min_samples_leaf = st.sidebar.slider('Min Samples Leaf', 1, 20, 1)
+        max_features = st.sidebar.selectbox('Max Features', ['auto', 'sqrt', 'log2'])
+    elif modelo_tipo == 'CatBoost':
+        depth = st.sidebar.slider('Depth', 3, 10, 6)
+        l2_leaf_reg = st.sidebar.slider('L2 Leaf Reg', 1, 10, 3)
+        border_count = st.sidebar.slider('Border Count', 32, 255, 32)
+    
     # Configurações do XGBoost (opcionais)
     if modelo_tipo == 'XGBoost':
-        subsample = st.sidebar.slider('Subsample (Taxa de Amostragem)', 0.5, 1.0, 0.8)
-        colsample_bytree = st.sidebar.slider('ColSample ByTree (Taxa de Colunas por Árvore)', 0.5, 1.0, 0.8)
+        # Já adicionados acima
+        pass
     else:
         subsample = None
         colsample_bytree = None
+        gamma = None
+        min_child_weight = None
+        reg_alpha = None
+        reg_lambda = None
+        depth = None
+        l2_leaf_reg = None
+        border_count = None
+        min_samples_split = None
+        min_samples_leaf = None
+        max_features = None
 
     # Valores de comparação com o artigo fornecidos pelo usuário
     st.sidebar.subheader("Valores do Artigo para Comparação (Opcional)")
@@ -283,7 +310,10 @@ def configurar_sidebar():
     r2_artigo = st.sidebar.number_input('R² do Artigo', min_value=0.0, max_value=1.0, value=0.0)
     erro_medio_artigo = st.sidebar.number_input('Erro Médio do Artigo', min_value=0.0, value=0.0)
 
-    return modelo_tipo, tipo_problema, n_estimators, learning_rate, max_depth, l2_reg, subsample, colsample_bytree, mse_artigo, mape_artigo, r2_artigo, erro_medio_artigo
+    return (modelo_tipo, tipo_problema, n_estimators, learning_rate, max_depth, l2_reg, 
+            subsample, colsample_bytree, gamma, min_child_weight, reg_alpha, reg_lambda,
+            min_samples_split, min_samples_leaf, max_features, depth, l2_leaf_reg, border_count,
+            mse_artigo, mape_artigo, r2_artigo, erro_medio_artigo)
 
 def plotar_comparacao_previsoes(y_test, y_pred):
     st.write("### Comparação de Previsões com Valores Reais")
@@ -296,6 +326,7 @@ def plotar_comparacao_previsoes(y_test, y_pred):
     ax.legend()
     st.pyplot(fig)
 
+# Funções adicionais de plotagem (já existentes)
 def plotar_dispersao_previsoes(y_test, y_pred):
     st.write("### Dispersão: Previsões vs Valores Reais")
     fig, ax = plt.subplots()
@@ -363,7 +394,7 @@ def comparar_com_artigo(mse, mape, r2, erro_medio, mse_artigo, mape_artigo, r2_a
     if mse > mse_artigo * 1.2:
         st.warning("O MSE do modelo é muito maior que o do artigo. Considere ajustar os hiperparâmetros.")
 
-# Função principal
+# Executar a função principal
 
 def main():
     try:
@@ -419,7 +450,10 @@ def main():
             """)
     
         # Configurar o sidebar e obter as configurações
-        modelo_tipo, tipo_problema, n_estimators, learning_rate, max_depth, l2_reg, subsample, colsample_bytree, mse_artigo, mape_artigo, r2_artigo, erro_medio_artigo = configurar_sidebar()
+        (modelo_tipo, tipo_problema, n_estimators, learning_rate, max_depth, l2_reg, 
+         subsample, colsample_bytree, gamma, min_child_weight, reg_alpha, reg_lambda,
+         min_samples_split, min_samples_leaf, max_features, depth, l2_leaf_reg, border_count,
+         mse_artigo, mape_artigo, r2_artigo, erro_medio_artigo) = configurar_sidebar()
     
         # Upload de arquivo CSV
         uploaded_file = st.sidebar.file_uploader("Carregue seus dados em CSV", type=["csv"])
@@ -488,11 +522,28 @@ def main():
                         'n_estimators': n_estimators,
                         'learning_rate': learning_rate,
                         'max_depth': max_depth,
-                        'reg_lambda': l2_reg
+                        'reg_lambda': reg_lambda if reg_lambda is not None else 1.0
                     }
-                    if subsample and colsample_bytree:
-                        modelo_kwargs['subsample'] = subsample
-                        modelo_kwargs['colsample_bytree'] = colsample_bytree
+                    if modelo_tipo == 'XGBoost':
+                        modelo_kwargs.update({
+                            'gamma': gamma,
+                            'min_child_weight': min_child_weight,
+                            'subsample': subsample,
+                            'colsample_bytree': colsample_bytree,
+                            'reg_alpha': reg_alpha
+                        })
+                    elif modelo_tipo == 'Random Forest':
+                        modelo_kwargs.update({
+                            'min_samples_split': min_samples_split,
+                            'min_samples_leaf': min_samples_leaf,
+                            'max_features': max_features
+                        })
+                    elif modelo_tipo == 'CatBoost':
+                        modelo_kwargs.update({
+                            'depth': depth,
+                            'l2_leaf_reg': l2_leaf_reg,
+                            'border_count': border_count
+                        })
     
                     # Treinamento do modelo de regressão
                     if modelo_tipo == 'XGBoost':
@@ -509,12 +560,39 @@ def main():
     
                     # Aplicar Randomized Search para otimização de hiperparâmetros
                     if st.sidebar.checkbox('Otimizar Hiperparâmetros?'):
-                        param_distributions = {
-                            'n_estimators': [100, 200, 300, 500],
-                            'max_depth': [4, 6, 8, 10, 12],
-                            'learning_rate': [0.01, 0.05, 0.1, 0.2],
-                        }
-                        modelo = otimizar_modelo(modelo, X_train_full, y_train_full, param_distributions, tipo_problema)
+                        param_distributions = {}
+                        if modelo_tipo == 'XGBoost':
+                            param_distributions = {
+                                'n_estimators': [100, 200, 300, 500],
+                                'max_depth': [4, 6, 8, 10, 12],
+                                'learning_rate': [0.01, 0.05, 0.1, 0.2],
+                                'gamma': [0, 0.1, 0.2, 0.3],
+                                'min_child_weight': [1, 3, 5, 7],
+                                'subsample': [0.6, 0.7, 0.8, 0.9, 1.0],
+                                'colsample_bytree': [0.6, 0.7, 0.8, 0.9, 1.0],
+                                'reg_alpha': [0, 0.1, 0.5, 1, 1.5, 2]
+                            }
+                        elif modelo_tipo == 'Random Forest':
+                            param_distributions = {
+                                'n_estimators': [100, 200, 300, 500],
+                                'max_depth': [None, 10, 20, 30, 40, 50],
+                                'min_samples_split': [2, 5, 10, 15],
+                                'min_samples_leaf': [1, 2, 4, 6],
+                                'max_features': ['auto', 'sqrt', 'log2']
+                            }
+                        elif modelo_tipo == 'CatBoost':
+                            param_distributions = {
+                                'depth': [4, 6, 8, 10],
+                                'l2_leaf_reg': [1, 3, 5, 7, 9],
+                                'border_count': [32, 64, 128, 256]
+                            }
+                        elif modelo_tipo == 'Stacking':
+                            # Para empilhamento, geralmente otimiza-se os hiperparâmetros dos modelos base individualmente
+                            # Aqui, podemos optar por não otimizar ou definir parâmetros fixos
+                            param_distributions = {}
+    
+                        if param_distributions:
+                            modelo = otimizar_modelo(modelo, X_train_full, y_train_full, param_distributions, tipo_problema)
     
                     # Treinar o modelo usando Cross-Validation
                     if time_series:
@@ -558,11 +636,28 @@ def main():
                         'n_estimators': n_estimators,
                         'learning_rate': learning_rate,
                         'max_depth': max_depth,
-                        'reg_lambda': l2_reg
+                        'reg_lambda': reg_lambda if reg_lambda is not None else 1.0
                     }
-                    if subsample and colsample_bytree:
-                        modelo_kwargs['subsample'] = subsample
-                        modelo_kwargs['colsample_bytree'] = colsample_bytree
+                    if modelo_tipo == 'XGBoost':
+                        modelo_kwargs.update({
+                            'gamma': gamma,
+                            'min_child_weight': min_child_weight,
+                            'subsample': subsample,
+                            'colsample_bytree': colsample_bytree,
+                            'reg_alpha': reg_alpha
+                        })
+                    elif modelo_tipo == 'Random Forest':
+                        modelo_kwargs.update({
+                            'min_samples_split': min_samples_split,
+                            'min_samples_leaf': min_samples_leaf,
+                            'max_features': max_features
+                        })
+                    elif modelo_tipo == 'CatBoost':
+                        modelo_kwargs.update({
+                            'depth': depth,
+                            'l2_leaf_reg': l2_leaf_reg,
+                            'border_count': border_count
+                        })
     
                     # Treinamento do modelo de classificação
                     if modelo_tipo == 'XGBoost':
@@ -579,21 +674,58 @@ def main():
     
                     # Aplicar Randomized Search para otimização de hiperparâmetros
                     if st.sidebar.checkbox('Otimizar Hiperparâmetros?'):
-                        param_distributions = {
-                            'n_estimators': [100, 200, 300, 500],
-                            'max_depth': [4, 6, 8, 10, 12],
-                            'learning_rate': [0.01, 0.05, 0.1, 0.2],
-                        }
-                        modelo = otimizar_modelo(modelo, X_train_full, y_train_full, param_distributions, tipo_problema)
+                        param_distributions = {}
+                        if modelo_tipo == 'XGBoost':
+                            param_distributions = {
+                                'n_estimators': [100, 200, 300, 500],
+                                'max_depth': [4, 6, 8, 10, 12],
+                                'learning_rate': [0.01, 0.05, 0.1, 0.2],
+                                'gamma': [0, 0.1, 0.2, 0.3],
+                                'min_child_weight': [1, 3, 5, 7],
+                                'subsample': [0.6, 0.7, 0.8, 0.9, 1.0],
+                                'colsample_bytree': [0.6, 0.7, 0.8, 0.9, 1.0],
+                                'reg_alpha': [0, 0.1, 0.5, 1, 1.5, 2]
+                            }
+                        elif modelo_tipo == 'Random Forest':
+                            param_distributions = {
+                                'n_estimators': [100, 200, 300, 500],
+                                'max_depth': [None, 10, 20, 30, 40, 50],
+                                'min_samples_split': [2, 5, 10, 15],
+                                'min_samples_leaf': [1, 2, 4, 6],
+                                'max_features': ['auto', 'sqrt', 'log2']
+                            }
+                        elif modelo_tipo == 'CatBoost':
+                            param_distributions = {
+                                'depth': [4, 6, 8, 10],
+                                'l2_leaf_reg': [1, 3, 5, 7, 9],
+                                'border_count': [32, 64, 128, 256]
+                            }
+                        elif modelo_tipo == 'Stacking':
+                            # Para empilhamento, geralmente otimiza-se os hiperparâmetros dos modelos base individualmente
+                            # Aqui, podemos optar por não otimizar ou definir parâmetros fixos
+                            param_distributions = {}
+    
+                        if param_distributions:
+                            modelo = otimizar_modelo(modelo, X_train_full, y_train_full, param_distributions, tipo_problema)
     
                     # Treinar o modelo usando Cross-Validation
                     if time_series:
-                        scores = cross_val_score(modelo, X_processed, y, cv=tscv, scoring='f1_weighted')
-                        st.write(f"### Validação Cruzada Temporal (F1 Score): {np.mean(scores):.4f} (+/- {np.std(scores):.4f})")
+                        if tipo_problema == 'Classificação':
+                            scoring = 'f1_weighted'
+                        else:
+                            scoring = 'neg_mean_squared_error'
+                        scores = cross_val_score(modelo, X_processed, y, cv=tscv, scoring=scoring)
+                        metric_name = 'F1 Score' if tipo_problema == 'Classificação' else 'MSE'
+                        st.write(f"### Validação Cruzada Temporal ({metric_name}): {np.mean(scores):.4f} (+/- {np.std(scores):.4f})")
                     else:
+                        if tipo_problema == 'Classificação':
+                            scoring = 'f1_weighted'
+                        else:
+                            scoring = 'neg_mean_squared_error'
                         cv = KFold(n_splits=5, shuffle=True, random_state=42)
-                        scores = cross_val_score(modelo, X_train_full, y_train_full, cv=cv, scoring='f1_weighted')
-                        st.write(f"### Validação Cruzada (F1 Score): {np.mean(scores):.4f} (+/- {np.std(scores):.4f})")
+                        scores = cross_val_score(modelo, X_train_full, y_train_full, cv=cv, scoring=scoring)
+                        metric_name = 'F1 Score' if tipo_problema == 'Classificação' else 'MSE'
+                        st.write(f"### Validação Cruzada ({metric_name}): {np.mean(scores):.4f} (+/- {np.std(scores):.4f})")
     
                         # Ajustar o modelo nos dados completos de treinamento
                         modelo.fit(X_train_full, y_train_full)
@@ -601,7 +733,7 @@ def main():
     
                         # Fazer previsões no conjunto de teste
                         y_pred = modelo.predict(X_test)
-                        y_proba = modelo.predict_proba(X_test)
+                        y_proba = modelo.predict_proba(X_test) if hasattr(modelo, 'predict_proba') else None
     
                         # Calcular métricas de classificação
                         metrics = calcular_metricas_classificacao(y_test, y_pred, y_proba)
@@ -615,14 +747,14 @@ def main():
                         plotar_matriz_confusao(y_test, y_pred)
     
                         # Exibir curva ROC (para problemas binários)
-                        if len(np.unique(y_test)) == 2:
+                        if y_proba is not None and len(np.unique(y_test)) == 2:
                             plotar_curva_roc(y_test, y_proba)
     
                         # Exibir a importância das features
                         mostrar_importancia_features(modelo, X, preprocessor)
-    except Exception as e:
-        st.error(f"Ocorreu um erro inesperado: {e}")
-        logging.exception("Erro inesperado no main")
+        except Exception as e:
+            st.error(f"Ocorreu um erro inesperado: {e}")
+            logging.exception("Erro inesperado no main")
 
     # Imagem e Contatos
     if os.path.exists("eu.ico"):
@@ -705,6 +837,6 @@ def main():
                 st.sidebar.error(f"Erro ao carregar o arquivo: {str(e)}")
                 logging.exception("Erro ao carregar o arquivo de áudio.")
 
-# Executar a função principal
-if __name__ == "__main__":
-    main()
+    # Executar a função principal
+    if __name__ == "__main__":
+        main()
