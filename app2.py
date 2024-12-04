@@ -418,6 +418,15 @@ def exportar_resultados(y_test, y_pred):
         st.error(f"Erro ao exportar os resultados: {e}")
         logging.exception("Erro ao exportar os resultados")
 
+def comparar_com_artigo(mse, mape, r2, erro_medio, mse_artigo, mape_artigo, r2_artigo, erro_medio_artigo):
+    st.write("### Comparação com Valores do Artigo:")
+    comparison_df = pd.DataFrame({
+        'Métricas': ['MSE', 'MAPE', 'R²', 'Erro Médio'],
+        'Seu Modelo': [mse, mape, r2, erro_medio],
+        'Artigo': [mse_artigo, mape_artigo, r2_artigo, erro_medio_artigo]
+    })
+    st.table(comparison_df)
+
 # Função principal
 
 def main():
