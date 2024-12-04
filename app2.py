@@ -132,7 +132,7 @@ def preparar_dados(X, y, tipo_problema):
         # Ajustar e transformar os dados
         preprocessor.fit(X)
         X_processed = preprocessor.transform(X)
-        return X_processed, preprocessor
+        return X_processed, preprocessor, num_cols, cat_cols
     except Exception as e:
         st.error(f"Erro no pré-processamento dos dados: {e}")
         logging.exception("Erro no pré-processamento dos dados")
@@ -477,7 +477,7 @@ def main():
             - **Codificação de Coordenadas Geográficas:** Conversão de latitude e longitude em componentes seno e cosseno.
             - **Remoção de Outliers:** Filtragem de dados com base no z-score.
             """)
-
+        
         # Configurar o sidebar e obter as configurações
         (modelo_tipo, tipo_problema, n_estimators, learning_rate, max_depth, l2_reg, 
          subsample, colsample_bytree, gamma, min_child_weight, reg_alpha, reg_lambda,
@@ -534,7 +534,7 @@ def main():
                     st.write("### Outliers removidos.")
 
                 # Pré-processar os dados
-                X_processed, preprocessor = preparar_dados(X, y, tipo_problema)
+                X_processed, preprocessor, num_cols, cat_cols = preparar_dados(X, y, tipo_problema)
                 if X_processed is None:
                     st.stop()
 
@@ -832,6 +832,51 @@ def main():
 
                         # Exportar resultados
                         exportar_resultados(y_test, y_pred)
+
+            # Após treinar e avaliar o modelo, adicionar a seção de previsão
+            st.header("🔮 Fazer Previsões com Novos Dados")
+
+            with st.form(key='prediction_form'):
+                st.write("Insira os valores para as features abaixo e clique em **Prever** para obter a previsão.")
+
+                # Criar um dicionário para armazenar os inputs do usuário
+                user_input = {}
+
+                # Entradas para colunas numéricas
+                for col in num_cols:
+                    # Obter os valores mínimos e máximos para definir os limites dos sliders
+                    min_val = float(X[col].min()) if not X[col].isnull().all() else 0.0
+                    max_val = float(X[col].max()) if not X[col].isnull().all() else 1.0
+                    mean_val = float(X[col].mean()) if not X[col].isnull().all() else 0.0
+                    user_input[col] = st.number_input(f'{col}', value=mean_val, min_value=min_val, max_value=max_val, format="%.4f")
+
+                # Entradas para colunas categóricas
+                for col in cat_cols:
+                    unique_vals = data[col].dropna().unique().tolist()
+                    user_input[col] = st.selectbox(f'{col}', options=unique_vals)
+
+                submit_button = st.form_submit_button(label='Prever')
+
+            if submit_button:
+                try:
+                    # Criar um DataFrame com os inputs do usuário
+                    input_df = pd.DataFrame([user_input])
+
+                    # Pré-processar os dados de entrada
+                    X_new_processed = preprocessor.transform(input_df)
+
+                    # Realizar a previsão
+                    if tipo_problema == 'Regressão':
+                        prediction = modelo.predict(X_new_processed)
+                        st.success(f"**Previsão de ΔGWS:** {prediction[0]:.4f}")
+                    elif tipo_problema == 'Classificação':
+                        prediction = modelo.predict(X_new_processed)
+                        prediction_proba = modelo.predict_proba(X_new_processed)
+                        st.success(f"**Classe Predita:** {prediction[0]}")
+                        st.write(f"**Probabilidades:** {prediction_proba[0]}")
+                except Exception as e:
+                    st.error(f"Erro ao realizar a previsão: {e}")
+                    logging.exception("Erro ao realizar a previsão")
 
     except Exception as e:
         st.error(f"Ocorreu um erro inesperado: {e}")
