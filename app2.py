@@ -480,21 +480,21 @@ def main():
             if data is not None:
                 st.write("### Pré-visualização dos Dados Carregados:")
                 st.write(data.head())
-    
+
                 # Opção para selecionar a coluna de data
                 if st.sidebar.checkbox("Os dados contêm coluna de data?"):
                     coluna_tempo = st.sidebar.selectbox('Selecione a coluna de data', data.columns)
                     data = extrair_caracteristicas_temporais(data, coluna_tempo)
-    
+
                 # Opção para selecionar colunas de latitude e longitude
                 if st.sidebar.checkbox("Os dados contêm coordenadas geográficas?"):
                     coluna_latitude = st.sidebar.selectbox('Selecione a coluna de Latitude', data.columns)
                     coluna_longitude = st.sidebar.selectbox('Selecione a coluna de Longitude', data.columns)
                     data = codificar_coordenadas(data, coluna_latitude, coluna_longitude)
-    
+
                 # Selecionar a coluna alvo
                 coluna_alvo = st.sidebar.selectbox('Selecione a coluna alvo (target)', data.columns)
-    
+
                 # Usar a coluna selecionada como variável alvo
                 if coluna_alvo in data.columns:
                     X = data.drop(columns=[coluna_alvo])
@@ -509,12 +509,12 @@ def main():
                 if remover_outliers_toggle:
                     X, y = remover_outliers(X, y)
                     st.write("### Outliers removidos.")
-    
+
                 # Pré-processar os dados
                 X_processed, preprocessor = preparar_dados(X, y, tipo_problema)
                 if X_processed is None:
                     st.stop()
-    
+
                 # Dividir os dados em conjuntos de treino e teste
                 if st.sidebar.checkbox("Usar Validação Cruzada Temporal?", value=False):
                     time_series = True
@@ -523,7 +523,7 @@ def main():
                 else:
                     time_series = False
                     X_train_full, X_test, y_train_full, y_test = train_test_split(X_processed, y, test_size=0.2, random_state=42)
-    
+
                 # Aplicar SMOTE para balanceamento em problemas de classificação
                 if tipo_problema == 'Classificação' and not time_series:
                     aplicar_smote_toggle = st.sidebar.checkbox("Aplicar SMOTE para Balanceamento?", value=False)
@@ -531,7 +531,7 @@ def main():
                         sm = SMOTE(random_state=42)
                         X_train_full, y_train_full = sm.fit_resample(X_train_full, y_train_full)
                         st.write("### SMOTE aplicado para balanceamento das classes.")
-    
+
                 # Escolher o modelo baseado no tipo de problema
                 if tipo_problema == 'Regressão':
                     # Definir parâmetros do modelo de regressão
@@ -561,7 +561,7 @@ def main():
                             'l2_leaf_reg': l2_leaf_reg,
                             'border_count': border_count
                         })
-    
+
                     # Treinamento do modelo de regressão
                     if modelo_tipo == 'XGBoost':
                         modelo = XGBRegressor(**modelo_kwargs, random_state=42)
@@ -574,7 +574,7 @@ def main():
                     
                     if modelo is None:
                         st.stop()
-    
+
                     # Aplicar Randomized Search para otimização de hiperparâmetros
                     if st.sidebar.checkbox('Otimizar Hiperparâmetros?'):
                         param_distributions = {}
@@ -607,10 +607,10 @@ def main():
                             # Para empilhamento, geralmente otimiza-se os hiperparâmetros dos modelos base individualmente
                             # Aqui, podemos optar por não otimizar ou definir parâmetros fixos
                             param_distributions = {}
-    
+
                         if param_distributions:
                             modelo = otimizar_modelo(modelo, X_train_full, y_train_full, param_distributions, tipo_problema)
-    
+
                     # Treinar o modelo usando Cross-Validation
                     if time_series:
                         scores = cross_val_score(modelo, X_processed, y, cv=tscv, scoring='neg_mean_squared_error')
@@ -619,43 +619,43 @@ def main():
                         cv = KFold(n_splits=5, shuffle=True, random_state=42)
                         scores = cross_val_score(modelo, X_train_full, y_train_full, cv=cv, scoring='neg_mean_squared_error')
                         st.write(f"### Validação Cruzada (MSE): {-np.mean(scores):.4f} (+/- {np.std(scores):.4f})")
-    
+
                         # Ajustar o modelo nos dados completos de treinamento
                         modelo.fit(X_train_full, y_train_full)
                         logging.info("Modelo de regressão treinado com sucesso.")
-    
+
                         # Fazer previsões no conjunto de teste
                         y_pred = modelo.predict(X_test)
-    
+
                         # Calcular métricas de desempenho de regressão
                         mse, rmse, mape, mae, r2, erro_medio = calcular_metricas_regressao(y_test, y_pred)
                         exibir_metricas_regressao(mse, rmse, mape, mae, r2, erro_medio)
-    
+
                         # Comparar com os valores do artigo (se fornecidos)
                         if mse_artigo > 0:
                             comparar_com_artigo(mse, mape, r2, erro_medio, mse_artigo, mape_artigo, r2_artigo, erro_medio_artigo)
-    
+
                         # Exibir a importância das features
                         mostrar_importancia_features(modelo, X, preprocessor)
-    
+
                         # Exibir gráfico de dispersão de previsões vs valores reais
                         plotar_dispersao_previsoes(y_test, y_pred)
-    
+
                         # Exibir gráfico de resíduos
                         plotar_residuos(y_test, y_pred)
-    
+
                         # Exibir gráfico de comparação de previsões com valores reais
                         plotar_comparacao_previsoes(y_test, y_pred)
-    
+
                         # Exibir curvas de aprendizado
                         plotar_curvas_aprendizado(modelo, X_train_full, y_train_full, tipo_problema)
-    
+
                         # Exportar modelo treinado
                         exportar_modelo(modelo, preprocessor)
-    
+
                         # Exportar resultados
                         exportar_resultados(y_test, y_pred)
-    
+
                 elif tipo_problema == 'Classificação':
                     # Definir parâmetros do modelo de classificação
                     modelo_kwargs = {
@@ -684,7 +684,7 @@ def main():
                             'l2_leaf_reg': l2_leaf_reg,
                             'border_count': border_count
                         })
-    
+
                     # Treinamento do modelo de classificação
                     if modelo_tipo == 'XGBoost':
                         modelo = XGBClassifier(**modelo_kwargs, use_label_encoder=False, eval_metric='logloss', random_state=42)
@@ -697,7 +697,7 @@ def main():
                     
                     if modelo is None:
                         st.stop()
-    
+
                     # Aplicar Randomized Search para otimização de hiperparâmetros
                     if st.sidebar.checkbox('Otimizar Hiperparâmetros?'):
                         param_distributions = {}
@@ -730,10 +730,10 @@ def main():
                             # Para empilhamento, geralmente otimiza-se os hiperparâmetros dos modelos base individualmente
                             # Aqui, podemos optar por não otimizar ou definir parâmetros fixos
                             param_distributions = {}
-    
+
                         if param_distributions:
                             modelo = otimizar_modelo(modelo, X_train_full, y_train_full, param_distributions, tipo_problema)
-    
+
                     # Treinar o modelo usando Cross-Validation
                     if time_series:
                         if tipo_problema == 'Classificação':
@@ -752,55 +752,55 @@ def main():
                         scores = cross_val_score(modelo, X_train_full, y_train_full, cv=cv, scoring=scoring)
                         metric_name = 'F1 Score' if tipo_problema == 'Classificação' else 'MSE'
                         st.write(f"### Validação Cruzada ({metric_name}): {np.mean(scores):.4f} (+/- {np.std(scores):.4f})")
-    
+
                         # Ajustar o modelo nos dados completos de treinamento
                         modelo.fit(X_train_full, y_train_full)
                         logging.info("Modelo de classificação treinado com sucesso.")
-    
+
                         # Fazer previsões no conjunto de teste
                         y_pred = modelo.predict(X_test)
                         y_proba = modelo.predict_proba(X_test) if hasattr(modelo, 'predict_proba') else None
-    
+
                         # Calcular métricas de classificação
                         metrics = calcular_metricas_classificacao(y_test, y_pred, y_proba)
                         exibir_metricas_classificacao(metrics)
-    
+
                         # Exibir relatório de classificação
                         st.write("### Relatório de Classificação:")
                         st.text(classification_report(y_test, y_pred))
-    
+
                         # Exibir matriz de confusão
                         plotar_matriz_confusao(y_test, y_pred)
-    
+
                         # Exibir curva ROC (para problemas binários)
                         if y_proba is not None and len(np.unique(y_test)) == 2:
                             plotar_curva_roc(y_test, y_proba)
-    
+
                         # Exibir a importância das features
                         mostrar_importancia_features(modelo, X, preprocessor)
-    
+
                         # Exibir gráfico de dispersão de previsões vs valores reais
                         plotar_dispersao_previsoes(y_test, y_pred)
-    
+
                         # Exibir gráfico de resíduos (opcional para classificação)
                         # Pode-se adaptar conforme necessário
-    
+
                         # Exibir gráfico de comparação de previsões com valores reais
                         # Pode-se adaptar conforme necessário
-    
+
                         # Exibir curvas de aprendizado
                         plotar_curvas_aprendizado(modelo, X_train_full, y_train_full, tipo_problema)
-    
+
                         # Exportar modelo treinado
                         exportar_modelo(modelo, preprocessor)
-    
+
                         # Exportar resultados
                         exportar_resultados(y_test, y_pred)
-    
-        except Exception as e:
-            st.error(f"Ocorreu um erro inesperado: {e}")
-            logging.exception("Erro inesperado no main")
-    
+
+    except Exception as e:
+        st.error(f"Ocorreu um erro inesperado: {e}")
+        logging.exception("Erro inesperado no main")
+
     # Imagem e Contatos
     if os.path.exists("eu.ico"):
         st.sidebar.image("eu.ico", width=80)
@@ -808,45 +808,45 @@ def main():
     else:
         st.sidebar.text("Imagem do contato não encontrada.")
         logging.warning("Imagem 'eu.ico' não encontrada na sidebar.")
-    
+
     st.sidebar.write("""
     ### Projeto Geomaker + IA 
-    
+
     [DOI:10.5281/zenodo.13856575](https://doi.org/10.5281/zenodo.13856575)
     - **Professor:** Marcelo Claro.
     - **Contatos:** marceloclaro@gmail.com
     - **Whatsapp:** (88) 98158-7145
     - **Instagram:** [marceloclaro.geomaker](https://www.instagram.com/marceloclaro.geomaker/)
     """)
-    
+
     # Controle de Áudio
     st.sidebar.title("Controle de Áudio")
-    
+
     # Dicionário de arquivos de áudio, com nomes amigáveis mapeando para o caminho do arquivo
     mp3_files = {
         "Áudio explicativo 1": "kariri.mp3",
         # Adicione mais arquivos conforme necessário
     }
-    
+
     # Lista de arquivos MP3 para seleção
     selected_mp3 = st.sidebar.radio("Escolha um áudio explicativo:", options=list(mp3_files.keys()))  
-    
+
     # Controle de opção de repetição
     loop = st.sidebar.checkbox("Repetir áudio")
-    
+
     # Botão de Play para iniciar o áudio
     play_button = st.sidebar.button("Play")
-    
+
     # Placeholder para o player de áudio
     audio_placeholder = st.sidebar.empty()
-    
+
     # Função para verificar se o arquivo existe
     def check_file_exists(mp3_path):
         if not os.path.exists(mp3_path):
             st.sidebar.error(f"Arquivo {mp3_path} não encontrado.")
             return False
         return True
-    
+
     # Se o botão Play for pressionado e um arquivo de áudio estiver selecionado
     if play_button and selected_mp3:
         mp3_path = mp3_files[selected_mp3]
