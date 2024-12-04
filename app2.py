@@ -5,9 +5,10 @@ import base64
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
+import seaborn as sns
 
 from sklearn.model_selection import (
-    train_test_split, GridSearchCV, RandomizedSearchCV,
+    train_test_split, RandomizedSearchCV,
     cross_val_score, KFold, TimeSeriesSplit
 )
 from sklearn.preprocessing import StandardScaler, OneHotEncoder
@@ -26,6 +27,7 @@ from sklearn.ensemble import (
 from xgboost import XGBClassifier, XGBRegressor
 from catboost import CatBoostClassifier, CatBoostRegressor
 from imblearn.over_sampling import SMOTE
+import joblib  # Para exportar modelos
 
 # Configuração básica de logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -192,10 +194,10 @@ def mostrar_importancia_features(modelo, X, preprocessor):
             
             st.write("### Importância das Variáveis (Features):")
             fig, ax = plt.subplots(figsize=(10, 6))
-            importancia_df.plot(kind='barh', x='Features', y='Importância', legend=False, ax=ax)
+            sns.barplot(x='Importância', y='Features', data=importancia_df, ax=ax, palette='viridis')
             plt.title("Importância das Features")
             plt.xlabel("Importância")
-            plt.gca().invert_yaxis()
+            plt.ylabel("Features")
             plt.tight_layout()
             st.pyplot(fig)
     except Exception as e:
@@ -264,9 +266,9 @@ def configurar_sidebar():
     tipo_problema = st.sidebar.selectbox('Escolha o Tipo de Problema', ['Classificação', 'Regressão'])
     
     n_estimators = st.sidebar.slider('Número de Árvores (n_estimators)', 100, 1000, 300, step=50)
-    learning_rate = st.sidebar.slider('Taxa de Aprendizado (learning_rate)', 0.01, 0.3, 0.1)
+    learning_rate = st.sidebar.slider('Taxa de Aprendizado (learning_rate)', 0.01, 0.3, 0.1, step=0.01)
     max_depth = st.sidebar.slider('Profundidade Máxima (max_depth)', 3, 20, 6)
-    l2_reg = st.sidebar.slider('Regularização L2 (Weight Decay)', 0.0, 1.0, 0.1)
+    l2_reg = st.sidebar.slider('Regularização L2 (Weight Decay)', 0.0, 1.0, 0.1, step=0.1)
     
     # Adição de mais hiperparâmetros específicos
     if modelo_tipo == 'XGBoost':
@@ -284,31 +286,27 @@ def configurar_sidebar():
         depth = st.sidebar.slider('Depth', 3, 10, 6)
         l2_leaf_reg = st.sidebar.slider('L2 Leaf Reg', 1, 10, 3)
         border_count = st.sidebar.slider('Border Count', 32, 255, 32)
-    
-    # Configurações do XGBoost (opcionais)
-    if modelo_tipo == 'XGBoost':
-        # Já adicionados acima
-        pass
     else:
-        subsample = None
-        colsample_bytree = None
+        # Parâmetros para Stacking ou outros modelos
         gamma = None
         min_child_weight = None
+        subsample = None
+        colsample_bytree = None
         reg_alpha = None
         reg_lambda = None
-        depth = None
-        l2_leaf_reg = None
-        border_count = None
         min_samples_split = None
         min_samples_leaf = None
         max_features = None
-
+        depth = None
+        l2_leaf_reg = None
+        border_count = None
+    
     # Valores de comparação com o artigo fornecidos pelo usuário
     st.sidebar.subheader("Valores do Artigo para Comparação (Opcional)")
-    mse_artigo = st.sidebar.number_input('MSE do Artigo', min_value=0.0, value=0.0)
-    mape_artigo = st.sidebar.number_input('MAPE do Artigo', min_value=0.0, value=0.0)
-    r2_artigo = st.sidebar.number_input('R² do Artigo', min_value=0.0, max_value=1.0, value=0.0)
-    erro_medio_artigo = st.sidebar.number_input('Erro Médio do Artigo', min_value=0.0, value=0.0)
+    mse_artigo = st.sidebar.number_input('MSE do Artigo', min_value=0.0, value=0.0, format="%.4f")
+    mape_artigo = st.sidebar.number_input('MAPE do Artigo', min_value=0.0, value=0.0, format="%.4f")
+    r2_artigo = st.sidebar.number_input('R² do Artigo', min_value=0.0, max_value=1.0, value=0.0, format="%.4f")
+    erro_medio_artigo = st.sidebar.number_input('Erro Médio do Artigo', min_value=0.0, value=0.0, format="%.4f")
 
     return (modelo_tipo, tipo_problema, n_estimators, learning_rate, max_depth, l2_reg, 
             subsample, colsample_bytree, gamma, min_child_weight, reg_alpha, reg_lambda,
@@ -326,11 +324,10 @@ def plotar_comparacao_previsoes(y_test, y_pred):
     ax.legend()
     st.pyplot(fig)
 
-# Funções adicionais de plotagem (já existentes)
 def plotar_dispersao_previsoes(y_test, y_pred):
     st.write("### Dispersão: Previsões vs Valores Reais")
     fig, ax = plt.subplots()
-    ax.scatter(y_test, y_pred, edgecolors=(0, 0, 0))
+    sns.scatterplot(x=y_test, y=y_pred, ax=ax, edgecolor='k')
     ax.plot([y_test.min(), y_test.max()], [y_test.min(), y_test.max()], 'k--', lw=2)
     ax.set_xlabel('Valores Reais')
     ax.set_ylabel('Previsões')
@@ -341,7 +338,7 @@ def plotar_residuos(y_test, y_pred):
     st.write("### Resíduos: Valores Reais vs Resíduos")
     residuos = y_test - y_pred
     fig, ax = plt.subplots()
-    ax.scatter(y_pred, residuos, edgecolors=(0, 0, 0))
+    sns.scatterplot(x=y_pred, y=residuos, ax=ax, edgecolor='k')
     ax.axhline(y=0, color='r', linestyle='--')
     ax.set_xlabel('Previsões')
     ax.set_ylabel('Resíduos')
@@ -352,19 +349,10 @@ def plotar_matriz_confusao(y_test, y_pred):
     st.write("### Matriz de Confusão:")
     cm = confusion_matrix(y_test, y_pred)
     fig, ax = plt.subplots()
-    cax = ax.matshow(cm, cmap=plt.cm.Blues)
+    sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', ax=ax)
     plt.title('Matriz de Confusão')
-    fig.colorbar(cax)
-    unique_classes = np.unique(y_test)
-    ax.set_xticks(range(len(unique_classes)))
-    ax.set_xticklabels(unique_classes, rotation=45)
-    ax.set_yticks(range(len(unique_classes)))
-    ax.set_yticklabels(unique_classes)
     plt.xlabel('Previstos')
     plt.ylabel('Verdadeiros')
-    for i in range(cm.shape[0]):
-        for j in range(cm.shape[1]):
-            ax.text(j, i, format(cm[i, j], 'd'), ha='center', va='center', color='red')
     st.pyplot(fig)
 
 def plotar_curva_roc(y_test, y_proba):
@@ -372,7 +360,7 @@ def plotar_curva_roc(y_test, y_proba):
     fpr, tpr, thresholds = roc_curve(y_test, y_proba[:, 1])
     roc_auc = auc(fpr, tpr)
     fig, ax = plt.subplots()
-    ax.plot(fpr, tpr, color='darkorange', lw=2, label=f'Curva ROC (área = {roc_auc:.2f})')
+    ax.plot(fpr, tpr, color='darkorange', lw=2, label=f'Curva ROC (AUC = {roc_auc:.2f})')
     ax.plot([0, 1], [0, 1], color='navy', lw=2, linestyle='--')
     ax.set_xlim([0.0, 1.0])
     ax.set_ylim([0.0, 1.05])
@@ -382,19 +370,55 @@ def plotar_curva_roc(y_test, y_proba):
     ax.legend(loc="lower right")
     st.pyplot(fig)
 
-def comparar_com_artigo(mse, mape, r2, erro_medio, mse_artigo, mape_artigo, r2_artigo, erro_medio_artigo):
-    st.write("### Comparação com o Artigo:")
-    st.write(f"**MSE no Artigo:** {mse_artigo}, **MSE do Modelo:** {mse:.4f}")
-    st.write(f"**MAPE no Artigo:** {mape_artigo}, **MAPE do Modelo:** {mape:.4f}")
-    st.write(f"**R² no Artigo:** {r2_artigo}, **R² do Modelo:** {r2:.4f}")
-    st.write(f"**Erro Médio no Artigo:** {erro_medio_artigo}, **Erro Médio do Modelo:** {erro_medio:.4f}")
-    
-    if abs(r2 - r2_artigo) > 0.1:
-        st.warning("Atenção: O R² do modelo está significativamente diferente do valor apresentado no artigo.")
-    if mse > mse_artigo * 1.2:
-        st.warning("O MSE do modelo é muito maior que o do artigo. Considere ajustar os hiperparâmetros.")
+def plotar_curvas_aprendizado(modelo, X, y, tipo_problema):
+    from sklearn.model_selection import learning_curve
+    st.write("### Curvas de Aprendizado")
+    fig, ax = plt.subplots(figsize=(10, 6))
+    train_sizes, train_scores, test_scores = learning_curve(
+        modelo, X, y, cv=5, scoring='f1_weighted' if tipo_problema == 'Classificação' else 'neg_mean_squared_error',
+        n_jobs=-1, train_sizes=np.linspace(0.1, 1.0, 10)
+    )
+    train_scores_mean = np.mean(train_scores, axis=1)
+    test_scores_mean = np.mean(test_scores, axis=1)
+    ax.plot(train_sizes, train_scores_mean, 'o-', color='r', label='Score de Treino')
+    ax.plot(train_sizes, test_scores_mean, 'o-', color='g', label='Score de Validação')
+    ax.set_xlabel('Tamanho do Conjunto de Treino')
+    ax.set_ylabel('Score')
+    ax.set_title('Curvas de Aprendizado')
+    ax.legend(loc='best')
+    st.pyplot(fig)
 
-# Executar a função principal
+def exportar_modelo(modelo, preprocessor):
+    try:
+        # Criar um pipeline completo para exportação
+        pipeline = Pipeline([
+            ('preprocessor', preprocessor),
+            ('model', modelo)
+        ])
+        # Salvar o pipeline usando joblib
+        joblib.dump(pipeline, 'modelo_trained.pkl')
+        st.success("Modelo treinado exportado com sucesso! [Download Modelo](modelo_trained.pkl)")
+        with open('modelo_trained.pkl', 'rb') as f:
+            st.download_button('Download Modelo Treinado', f, file_name='modelo_trained.pkl')
+    except Exception as e:
+        st.error(f"Erro ao exportar o modelo: {e}")
+        logging.exception("Erro ao exportar o modelo")
+
+def exportar_resultados(y_test, y_pred):
+    try:
+        resultados = pd.DataFrame({
+            'Valores Reais': y_test,
+            'Previsões': y_pred
+        })
+        resultados.to_csv('resultados.csv', index=False)
+        st.success("Resultados exportados com sucesso! [Download Resultados](resultados.csv)")
+        with open('resultados.csv', 'rb') as f:
+            st.download_button('Download Resultados', f, file_name='resultados.csv')
+    except Exception as e:
+        st.error(f"Erro ao exportar os resultados: {e}")
+        logging.exception("Erro ao exportar os resultados")
+
+# Função principal
 
 def main():
     try:
@@ -424,31 +448,24 @@ def main():
             logging.warning("Imagem 'logo.png' não encontrada na sidebar.")
         
         st.title("Aplicativo de Aprendizado de Máquina para Previsão de Variações de Águas Subterrâneas (GWS)")
-        st.write("Este aplicativo permite treinar um modelo de classificação de imagens e aplicar algoritmos de clustering para análise comparativa.")
+        st.write("Este aplicativo permite treinar modelos de classificação e regressão para prever variações nas águas subterrâneas, com ferramentas avançadas de análise e visualização.")
         
-        with st.expander("Transformações de Dados e Aumento de Dados no Treinamento de Redes Neurais"):
+        with st.expander("Transformações de Dados e Engenharia de Features"):
             st.write("""
-            # Descrição Meticulosa do Código e do Aplicativo para Previsão de Variações de Águas Subterrâneas (ΔGWS)
-    
+            # Transformações de Dados e Engenharia de Features
+
             ## Introdução
-            
-            Este documento fornece uma descrição detalhada do código e do aplicativo desenvolvidos para prever variações nas águas subterrâneas (ΔGWS) utilizando técnicas de aprendizado de máquina. O objetivo principal é criar uma ferramenta robusta e interativa que permita a pesquisadores e profissionais analisar e prever mudanças nos níveis de águas subterrâneas com base em diversos fatores ambientais e climáticos.
-            
-            O aplicativo é construído em Python e utiliza o framework **Streamlit** para criar uma interface web interativa. Ele incorpora técnicas avançadas de pré-processamento de dados, engenharia de features, seleção de modelos, otimização de hiperparâmetros e avaliação de desempenho. O código foi projetado para ser flexível, permitindo ao usuário escolher entre diferentes modelos de aprendizado de máquina e ajustar os hiperparâmetros conforme necessário.
-            
-            ## Objetivos do Código e do Aplicativo
-            
-            - **Prever Variações nas Águas Subterrâneas (ΔGWS)**: Utilizar modelos de aprendizado de máquina para prever mudanças nos níveis de águas subterrâneas com base em dados históricos e fatores ambientais.
-            
-            - **Interface Interativa**: Fornecer uma interface fácil de usar onde os usuários podem carregar seus próprios dados, selecionar variáveis-alvo, ajustar modelos e visualizar resultados.
-            
-            - **Engenharia de Features Específicas**: Incorporar características temporais e espaciais para melhorar a precisão das previsões, considerando a natureza temporal e geográfica dos dados.
-            
-            - **Suporte a Diferentes Tipos de Problemas**: Permitir tanto tarefas de regressão quanto de classificação, dependendo da natureza do problema e dos dados disponíveis.
-            
-            - **Avaliação e Comparação de Modelos**: Fornecer métricas de desempenho detalhadas e visualizações que ajudam a entender a eficácia do modelo, incluindo comparações com resultados de pesquisas ou artigos científicos.
+
+            Este aplicativo incorpora técnicas avançadas de pré-processamento de dados e engenharia de features para melhorar a precisão das previsões. As principais transformações incluem:
+
+            - **Tratamento de Valores Nulos:** Preenchimento com média ou moda, conforme apropriado.
+            - **Codificação de Variáveis Categóricas:** Utilização de One-Hot Encoding.
+            - **Escalonamento de Features:** Aplicação de StandardScaler para normalizar os dados.
+            - **Engenharia de Features Temporais:** Extração de ano, mês, dia, dia da semana e estação a partir de colunas de data.
+            - **Codificação de Coordenadas Geográficas:** Conversão de latitude e longitude em componentes seno e cosseno.
+            - **Remoção de Outliers:** Filtragem de dados com base no z-score.
             """)
-    
+
         # Configurar o sidebar e obter as configurações
         (modelo_tipo, tipo_problema, n_estimators, learning_rate, max_depth, l2_reg, 
          subsample, colsample_bytree, gamma, min_child_weight, reg_alpha, reg_lambda,
@@ -630,6 +647,15 @@ def main():
                         # Exibir gráfico de comparação de previsões com valores reais
                         plotar_comparacao_previsoes(y_test, y_pred)
     
+                        # Exibir curvas de aprendizado
+                        plotar_curvas_aprendizado(modelo, X_train_full, y_train_full, tipo_problema)
+    
+                        # Exportar modelo treinado
+                        exportar_modelo(modelo, preprocessor)
+    
+                        # Exportar resultados
+                        exportar_resultados(y_test, y_pred)
+    
                 elif tipo_problema == 'Classificação':
                     # Definir parâmetros do modelo de classificação
                     modelo_kwargs = {
@@ -752,10 +778,29 @@ def main():
     
                         # Exibir a importância das features
                         mostrar_importancia_features(modelo, X, preprocessor)
+    
+                        # Exibir gráfico de dispersão de previsões vs valores reais
+                        plotar_dispersao_previsoes(y_test, y_pred)
+    
+                        # Exibir gráfico de resíduos (opcional para classificação)
+                        # Pode-se adaptar conforme necessário
+    
+                        # Exibir gráfico de comparação de previsões com valores reais
+                        # Pode-se adaptar conforme necessário
+    
+                        # Exibir curvas de aprendizado
+                        plotar_curvas_aprendizado(modelo, X_train_full, y_train_full, tipo_problema)
+    
+                        # Exportar modelo treinado
+                        exportar_modelo(modelo, preprocessor)
+    
+                        # Exportar resultados
+                        exportar_resultados(y_test, y_pred)
+    
         except Exception as e:
             st.error(f"Ocorreu um erro inesperado: {e}")
             logging.exception("Erro inesperado no main")
-
+    
     # Imagem e Contatos
     if os.path.exists("eu.ico"):
         st.sidebar.image("eu.ico", width=80)
@@ -837,6 +882,6 @@ def main():
                 st.sidebar.error(f"Erro ao carregar o arquivo: {str(e)}")
                 logging.exception("Erro ao carregar o arquivo de áudio.")
 
-    # Executar a função principal
-    if __name__ == "__main__":
-        main()
+# Executar a função principal
+if __name__ == "__main__":
+    main()
