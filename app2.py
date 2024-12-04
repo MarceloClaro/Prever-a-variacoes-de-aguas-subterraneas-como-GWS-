@@ -477,7 +477,7 @@ def main():
             - **Codificação de Coordenadas Geográficas:** Conversão de latitude e longitude em componentes seno e cosseno.
             - **Remoção de Outliers:** Filtragem de dados com base no z-score.
             """)
-        
+
         # Configurar o sidebar e obter as configurações
         (modelo_tipo, tipo_problema, n_estimators, learning_rate, max_depth, l2_reg, 
          subsample, colsample_bytree, gamma, min_child_weight, reg_alpha, reg_lambda,
@@ -542,10 +542,17 @@ def main():
                 if st.sidebar.checkbox("Usar Validação Cruzada Temporal?", value=False):
                     time_series = True
                     tscv = TimeSeriesSplit(n_splits=5)
-                    splits = tscv.split(X_processed)
+                    
+                    # Definir X_train_full e y_train_full como todo o conjunto de dados processados
+                    X_train_full = X_processed
+                    y_train_full = y
+                    logging.info("Definidas X_train_full e y_train_full para Validação Cruzada Temporal.")
                 else:
                     time_series = False
-                    X_train_full, X_test, y_train_full, y_test = train_test_split(X_processed, y, test_size=0.2, random_state=42)
+                    X_train_full, X_test, y_train_full, y_test = train_test_split(
+                        X_processed, y, test_size=0.2, random_state=42
+                    )
+                    logging.info("Dividido o conjunto de dados em treino e teste.")
 
                 # Aplicar SMOTE para balanceamento em problemas de classificação
                 if tipo_problema == 'Classificação' and not time_series:
@@ -632,7 +639,10 @@ def main():
                             param_distributions = {}
 
                         if param_distributions:
-                            modelo = otimizar_modelo(modelo, X_train_full, y_train_full, param_distributions, tipo_problema)
+                            if time_series:
+                                st.warning("Otimização de hiperparâmetros não está implementada para Validação Cruzada Temporal.")
+                            else:
+                                modelo = otimizar_modelo(modelo, X_train_full, y_train_full, param_distributions, tipo_problema)
 
                     # Treinar o modelo usando Cross-Validation
                     if time_series:
@@ -755,7 +765,10 @@ def main():
                             param_distributions = {}
 
                         if param_distributions:
-                            modelo = otimizar_modelo(modelo, X_train_full, y_train_full, param_distributions, tipo_problema)
+                            if time_series:
+                                st.warning("Otimização de hiperparâmetros não está implementada para Validação Cruzada Temporal.")
+                            else:
+                                modelo = otimizar_modelo(modelo, X_train_full, y_train_full, param_distributions, tipo_problema)
 
                     # Treinar o modelo usando Cross-Validation
                     if time_series:
