@@ -61,7 +61,7 @@ def extrair_caracteristicas_temporais(dataframe, coluna_tempo):
         dataframe['mes'] = dataframe[coluna_tempo].dt.month
         dataframe['dia'] = dataframe[coluna_tempo].dt.day
         dataframe['dia_da_semana'] = dataframe[coluna_tempo].dt.weekday
-        dataframe['estacao'] = (dataframe[coluna_tempo].dt.month % 12) // 3 + 1  # 1: Verão, ..., 4: Primavera
+        dataframe['estacao'] = dataframe[coluna_tempo].dt.month % 12 // 3 + 1  # 1: Verão, ..., 4: Primavera
         return dataframe
     except Exception as e:
         st.warning("Erro ao extrair características temporais.")
@@ -70,49 +70,37 @@ def extrair_caracteristicas_temporais(dataframe, coluna_tempo):
 
 def codificar_coordenadas(dataframe, coluna_latitude, coluna_longitude):
     try:
-        # Converter para numérico, forçando erros a NaN
-        dataframe[coluna_latitude] = pd.to_numeric(dataframe[coluna_latitude], errors='coerce')
-        dataframe[coluna_longitude] = pd.to_numeric(dataframe[coluna_longitude], errors='coerce')
+        # Verificar se as colunas selecionadas são numéricas
+        if not pd.api.types.is_numeric_dtype(dataframe[coluna_latitude]):
+            raise TypeError(f"A coluna '{coluna_latitude}' não é numérica.")
+        if not pd.api.types.is_numeric_dtype(dataframe[coluna_longitude]):
+            raise TypeError(f"A coluna '{coluna_longitude}' não é numérica.")
         
-        # Verificar se há NaNs após a conversão
-        if dataframe[coluna_latitude].isnull().any() or dataframe[coluna_longitude].isnull().any():
-            st.warning("Algumas coordenadas geográficas não puderam ser convertidas para numéricas e foram preenchidas com a média.")
-            dataframe[coluna_latitude].fillna(dataframe[coluna_latitude].mean(), inplace=True)
-            dataframe[coluna_longitude].fillna(dataframe[coluna_longitude].mean(), inplace=True)
-        
-        # Aplicar as funções trigonométricas
         dataframe['latitude_sin'] = np.sin(np.radians(dataframe[coluna_latitude]))
         dataframe['latitude_cos'] = np.cos(np.radians(dataframe[coluna_latitude]))
         dataframe['longitude_sin'] = np.sin(np.radians(dataframe[coluna_longitude]))
         dataframe['longitude_cos'] = np.cos(np.radians(dataframe[coluna_longitude]))
         return dataframe
     except Exception as e:
-        st.warning("Erro ao codificar coordenadas geográficas.")
+        st.error(f"Erro ao codificar coordenadas geográficas: {e}")
         logging.exception("Erro ao codificar coordenadas geográficas")
-        return dataframe
+        st.stop()  # Parar a execução do app
 
 def remover_outliers(X, y, limiar=3):
     try:
-        # Verificar se há colunas não numéricas
-        colunas_nao_numericas = X.select_dtypes(exclude=['float64', 'int64']).columns.tolist()
-        if colunas_nao_numericas:
-            st.warning(f"As seguintes colunas não são numéricas e serão ignoradas na remoção de outliers: {colunas_nao_numericas}")
-        
         # Selecionar apenas colunas numéricas
-        X_num = X.select_dtypes(include=['float64', 'int64'])
+        colunas_numericas = X.select_dtypes(include=['float64', 'int64']).columns
+        if colunas_numericas.empty:
+            st.warning("Não há colunas numéricas para remover outliers.")
+            return X, y
         
-        # Calcular z-scores apenas para colunas numéricas
-        z_scores = np.abs((X_num - X_num.mean()) / X_num.std())
-        
-        # Criar filtro baseado no limiar
+        z_scores = np.abs((X[colunas_numericas] - X[colunas_numericas].mean()) / X[colunas_numericas].std())
         filtro = (z_scores < limiar).all(axis=1)
-        
-        # Aplicar filtro ao DataFrame original (incluindo colunas categóricas)
         return X[filtro], y[filtro]
     except Exception as e:
         st.error(f"Erro ao remover outliers: {e}")
         logging.exception("Erro ao remover outliers")
-        return X, y
+        st.stop()
 
 def preparar_dados(X, y, tipo_problema):
     try:
@@ -148,7 +136,7 @@ def preparar_dados(X, y, tipo_problema):
     except Exception as e:
         st.error(f"Erro no pré-processamento dos dados: {e}")
         logging.exception("Erro no pré-processamento dos dados")
-        return None, None
+        st.stop()
 
 def calcular_metricas_regressao(y_test, y_pred):
     mse = mean_squared_error(y_test, y_pred)
@@ -489,7 +477,7 @@ def main():
             - **Codificação de Coordenadas Geográficas:** Conversão de latitude e longitude em componentes seno e cosseno.
             - **Remoção de Outliers:** Filtragem de dados com base no z-score.
             """)
-
+        
         # Configurar o sidebar e obter as configurações
         (modelo_tipo, tipo_problema, n_estimators, learning_rate, max_depth, l2_reg, 
          subsample, colsample_bytree, gamma, min_child_weight, reg_alpha, reg_lambda,
@@ -507,19 +495,28 @@ def main():
 
                 # Opção para selecionar a coluna de data
                 if st.sidebar.checkbox("Os dados contêm coluna de data?"):
-                    coluna_tempo = st.sidebar.selectbox('Selecione a coluna de data', data.columns)
+                    colunas_temporais = data.select_dtypes(include=['object', 'datetime64[ns]', 'category']).columns.tolist()
+                    if not colunas_temporais:
+                        st.error("Nenhuma coluna de data encontrada. Verifique os tipos de dados.")
+                        st.stop()
+                    coluna_tempo = st.sidebar.selectbox('Selecione a coluna de data', colunas_temporais)
                     data = extrair_caracteristicas_temporais(data, coluna_tempo)
 
                 # Opção para selecionar colunas de latitude e longitude
                 if st.sidebar.checkbox("Os dados contêm coordenadas geográficas?"):
-                    # Selecionar apenas colunas numéricas para latitude e longitude
+                    # Filtrar apenas colunas numéricas para seleção
                     colunas_numericas = data.select_dtypes(include=['float64', 'int64']).columns.tolist()
+                    if not colunas_numericas:
+                        st.error("Não há colunas numéricas disponíveis para selecionar como Latitude e Longitude.")
+                        st.stop()
+                    
                     coluna_latitude = st.sidebar.selectbox('Selecione a coluna de Latitude', colunas_numericas)
                     coluna_longitude = st.sidebar.selectbox('Selecione a coluna de Longitude', colunas_numericas)
                     data = codificar_coordenadas(data, coluna_latitude, coluna_longitude)
 
                 # Selecionar a coluna alvo
-                coluna_alvo = st.sidebar.selectbox('Selecione a coluna alvo (target)', data.columns)
+                colunas_alvo = data.columns.tolist()
+                coluna_alvo = st.sidebar.selectbox('Selecione a coluna alvo (target)', colunas_alvo)
 
                 # Usar a coluna selecionada como variável alvo
                 if coluna_alvo in data.columns:
@@ -549,7 +546,6 @@ def main():
                 else:
                     time_series = False
                     X_train_full, X_test, y_train_full, y_test = train_test_split(X_processed, y, test_size=0.2, random_state=42)
-                    logging.info("Divisão dos dados em treino e teste concluída.")
 
                 # Aplicar SMOTE para balanceamento em problemas de classificação
                 if tipo_problema == 'Classificação' and not time_series:
@@ -558,7 +554,6 @@ def main():
                         sm = SMOTE(random_state=42)
                         X_train_full, y_train_full = sm.fit_resample(X_train_full, y_train_full)
                         st.write("### SMOTE aplicado para balanceamento das classes.")
-                        logging.info("SMOTE aplicado para balanceamento das classes.")
 
                 # Escolher o modelo baseado no tipo de problema
                 if tipo_problema == 'Regressão':
@@ -641,9 +636,7 @@ def main():
 
                     # Treinar o modelo usando Cross-Validation
                     if time_series:
-                        # Implementar validação cruzada temporal para regressão
-                        scoring = 'neg_mean_squared_error'
-                        scores = cross_val_score(modelo, X_processed, y, cv=tscv, scoring=scoring)
+                        scores = cross_val_score(modelo, X_processed, y, cv=tscv, scoring='neg_mean_squared_error')
                         st.write(f"### Validação Cruzada Temporal (MSE): {-np.mean(scores):.4f} (+/- {np.std(scores):.4f})")
                     else:
                         cv = KFold(n_splits=5, shuffle=True, random_state=42)
@@ -827,90 +820,90 @@ def main():
                         # Exportar resultados
                         exportar_resultados(y_test, y_pred)
 
-        except Exception as e:
-            st.error(f"Ocorreu um erro inesperado: {e}")
-            logging.exception("Erro inesperado no main")
+    except Exception as e:
+        st.error(f"Ocorreu um erro inesperado: {e}")
+        logging.exception("Erro inesperado no main")
 
-        # Imagem e Contatos
-        if os.path.exists("eu.ico"):
-            st.sidebar.image("eu.ico", width=80, use_container_width=True)
-            logging.info("Imagem 'eu.ico' exibida na sidebar.")
-        else:
-            st.sidebar.text("Imagem do contato não encontrada.")
-            logging.warning("Imagem 'eu.ico' não encontrada na sidebar.")
+    # Imagem e Contatos
+    if os.path.exists("eu.ico"):
+        st.sidebar.image("eu.ico", width=80, use_container_width=True)
+        logging.info("Imagem 'eu.ico' exibida na sidebar.")
+    else:
+        st.sidebar.text("Imagem do contato não encontrada.")
+        logging.warning("Imagem 'eu.ico' não encontrada na sidebar.")
 
-        st.sidebar.write("""
-        ### Projeto Geomaker + IA 
+    st.sidebar.write("""
+    ### Projeto Geomaker + IA 
 
-        [DOI:10.5281/zenodo.13856575](https://doi.org/10.5281/zenodo.13856575)
-        - **Professor:** Marcelo Claro.
-        - **Contatos:** marceloclaro@gmail.com
-        - **Whatsapp:** (88) 98158-7145
-        - **Instagram:** [marceloclaro.geomaker](https://www.instagram.com/marceloclaro.geomaker/)
-        """)
+    [DOI:10.5281/zenodo.13856575](https://doi.org/10.5281/zenodo.13856575)
+    - **Professor:** Marcelo Claro.
+    - **Contatos:** marceloclaro@gmail.com
+    - **Whatsapp:** (88) 98158-7145
+    - **Instagram:** [marceloclaro.geomaker](https://www.instagram.com/marceloclaro.geomaker/)
+    """)
 
-        # Controle de Áudio
-        st.sidebar.title("Controle de Áudio")
+    # Controle de Áudio
+    st.sidebar.title("Controle de Áudio")
 
-        # Dicionário de arquivos de áudio, com nomes amigáveis mapeando para o caminho do arquivo
-        mp3_files = {
-            "Áudio explicativo 1": "kariri.mp3",
-            # Adicione mais arquivos conforme necessário
-        }
+    # Dicionário de arquivos de áudio, com nomes amigáveis mapeando para o caminho do arquivo
+    mp3_files = {
+        "Áudio explicativo 1": "kariri.mp3",
+        # Adicione mais arquivos conforme necessário
+    }
 
-        # Lista de arquivos MP3 para seleção
-        selected_mp3 = st.sidebar.radio("Escolha um áudio explicativo:", options=list(mp3_files.keys()))  
+    # Lista de arquivos MP3 para seleção
+    selected_mp3 = st.sidebar.radio("Escolha um áudio explicativo:", options=list(mp3_files.keys()))  
 
-        # Controle de opção de repetição
-        loop = st.sidebar.checkbox("Repetir áudio")
+    # Controle de opção de repetição
+    loop = st.sidebar.checkbox("Repetir áudio")
 
-        # Botão de Play para iniciar o áudio
-        play_button = st.sidebar.button("Play")
+    # Botão de Play para iniciar o áudio
+    play_button = st.sidebar.button("Play")
 
-        # Placeholder para o player de áudio
-        audio_placeholder = st.sidebar.empty()
+    # Placeholder para o player de áudio
+    audio_placeholder = st.sidebar.empty()
 
-        # Função para verificar se o arquivo existe
-        def check_file_exists(mp3_path):
-            if not os.path.exists(mp3_path):
+    # Função para verificar se o arquivo existe
+    def check_file_exists(mp3_path):
+        if not os.path.exists(mp3_path):
+            st.sidebar.error(f"Arquivo {mp3_path} não encontrado.")
+            return False
+        return True
+
+    # Se o botão Play for pressionado e um arquivo de áudio estiver selecionado
+    if play_button and selected_mp3:
+        mp3_path = mp3_files[selected_mp3]
+        
+        # Verificação da existência do arquivo
+        if check_file_exists(mp3_path):
+            try:
+                # Abrindo o arquivo de áudio no modo binário
+                with open(mp3_path, "rb") as audio_file:
+                    audio_bytes = audio_file.read()
+                    
+                    # Codificando o arquivo em base64 para embutir no HTML
+                    audio_base64 = base64.b64encode(audio_bytes).decode('utf-8')
+                    
+                    # Controle de loop (repetição)
+                    loop_attr = "loop" if loop else ""
+                    
+                    # Gerando o player de áudio em HTML
+                    audio_html = f"""
+                    <audio id="audio-player" controls autoplay {loop_attr}>
+                      <source src="data:audio/mp3;base64,{audio_base64}" type="audio/mp3">
+                      Seu navegador não suporta o elemento de áudio.
+                    </audio>
+                    """
+                    
+                    # Inserindo o player de áudio na interface
+                    audio_placeholder.markdown(audio_html, unsafe_allow_html=True)
+                    logging.info(f"Áudio '{mp3_path}' reproduzido.")
+            except FileNotFoundError:
                 st.sidebar.error(f"Arquivo {mp3_path} não encontrado.")
-                return False
-            return True
-
-        # Se o botão Play for pressionado e um arquivo de áudio estiver selecionado
-        if play_button and selected_mp3:
-            mp3_path = mp3_files[selected_mp3]
-            
-            # Verificação da existência do arquivo
-            if check_file_exists(mp3_path):
-                try:
-                    # Abrindo o arquivo de áudio no modo binário
-                    with open(mp3_path, "rb") as audio_file:
-                        audio_bytes = audio_file.read()
-                        
-                        # Codificando o arquivo em base64 para embutir no HTML
-                        audio_base64 = base64.b64encode(audio_bytes).decode('utf-8')
-                        
-                        # Controle de loop (repetição)
-                        loop_attr = "loop" if loop else ""
-                        
-                        # Gerando o player de áudio em HTML
-                        audio_html = f"""
-                        <audio id="audio-player" controls autoplay {loop_attr}>
-                          <source src="data:audio/mp3;base64,{audio_base64}" type="audio/mp3">
-                          Seu navegador não suporta o elemento de áudio.
-                        </audio>
-                        """
-                        
-                        # Inserindo o player de áudio na interface
-                        audio_placeholder.markdown(audio_html, unsafe_allow_html=True)
-                        logging.info(f"Áudio '{mp3_path}' reproduzido.")
-                except FileNotFoundError:
-                    st.sidebar.error(f"Arquivo {mp3_path} não encontrado.")
-                    logging.error(f"Arquivo {mp3_path} não encontrado.")
-                except Exception as e:
-                    st.sidebar.error(f"Erro ao carregar o arquivo: {str(e)}")
-                    logging.exception("Erro ao carregar o arquivo de áudio.")
+                logging.error(f"Arquivo {mp3_path} não encontrado.")
+            except Exception as e:
+                st.sidebar.error(f"Erro ao carregar o arquivo: {str(e)}")
+                logging.exception("Erro ao carregar o arquivo de áudio.")
 
 # Executar a função principal
 if __name__ == "__main__":
