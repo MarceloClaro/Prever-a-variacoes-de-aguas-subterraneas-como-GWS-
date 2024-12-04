@@ -6,3 +6,4 @@ catboost
 imbalanced-learn
 matplotlib
 numpy
+seaborn
