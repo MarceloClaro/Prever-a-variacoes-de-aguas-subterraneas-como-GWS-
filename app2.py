@@ -270,6 +270,10 @@ def configurar_sidebar():
     max_depth = st.sidebar.slider('Profundidade Máxima (max_depth)', 3, 20, 6)
     l2_reg = st.sidebar.slider('Regularização L2 (Weight Decay)', 0.0, 1.0, 0.1, step=0.1)
     
+    # Inicializar todas as variáveis como None
+    gamma = min_child_weight = subsample = colsample_bytree = reg_alpha = reg_lambda = None
+    min_samples_split = min_samples_leaf = max_features = depth = l2_leaf_reg = border_count = None
+    
     # Adição de mais hiperparâmetros específicos
     if modelo_tipo == 'XGBoost':
         gamma = st.sidebar.slider('Gamma', 0.0, 5.0, 0.0, step=0.1)
@@ -288,18 +292,7 @@ def configurar_sidebar():
         border_count = st.sidebar.slider('Border Count', 32, 255, 32)
     else:
         # Parâmetros para Stacking ou outros modelos
-        gamma = None
-        min_child_weight = None
-        subsample = None
-        colsample_bytree = None
-        reg_alpha = None
-        reg_lambda = None
-        min_samples_split = None
-        min_samples_leaf = None
-        max_features = None
-        depth = None
-        l2_leaf_reg = None
-        border_count = None
+        pass  # As variáveis já estão inicializadas como None
     
     # Valores de comparação com o artigo fornecidos pelo usuário
     st.sidebar.subheader("Valores do Artigo para Comparação (Opcional)")
@@ -443,14 +436,14 @@ def main():
         
         # Layout da página
         if os.path.exists('capa.png'):
-            st.image('capa.png', width=100, caption='Laboratório de Educação e Inteligência Artificial - Geomaker. "A melhor forma de prever o futuro é inventá-lo." - Alan Kay', use_column_width='always')
+            st.image('capa.png', width=100, caption='Laboratório de Educação e Inteligência Artificial - Geomaker. "A melhor forma de prever o futuro é inventá-lo." - Alan Kay', use_container_width=True)
             logging.info("Imagem 'capa.png' carregada com sucesso.")
         else:
             st.warning("Imagem 'capa.png' não encontrada.")
             logging.warning("Imagem 'capa.png' não encontrada.")
         
         if os.path.exists("logo.png"):
-            st.sidebar.image("logo.png", width=200)
+            st.sidebar.image("logo.png", width=200, use_container_width=True)
             logging.info("Imagem 'logo.png' exibida na sidebar.")
         else:
             st.sidebar.text("Imagem do logotipo não encontrada.")
@@ -812,7 +805,7 @@ def main():
 
     # Imagem e Contatos
     if os.path.exists("eu.ico"):
-        st.sidebar.image("eu.ico", width=80)
+        st.sidebar.image("eu.ico", width=80, use_container_width=True)
         logging.info("Imagem 'eu.ico' exibida na sidebar.")
     else:
         st.sidebar.text("Imagem do contato não encontrada.")
