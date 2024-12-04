@@ -339,7 +339,7 @@ def main():
     
   #___________________________________________________________
     st.title("Aplicativo de Aprendizado de Máquina para Previsão de Variações de Águas Subterrâneas (GWS)")
-
+    st.write("Este aplicativo permite treinar um modelo de classificação de imagens e aplicar algoritmos de clustering para análise comparativa.")
     with st.expander("Transformações de Dados e Aumento de Dados no Treinamento de Redes Neurais"):
         st.write("""
         # Descrição Meticulosa do Código e do Aplicativo para Previsão de Variações de Águas Subterrâneas (ΔGWS)
@@ -872,6 +872,76 @@ def main():
     else:
         st.write("Por favor, carregue um arquivo CSV para começar.")
 
+
+
+# Função para exibir gráfico de dispersão (para regressão)
+def plotar_dispersao_previsoes(y_test, y_pred):
+    st.write("### Dispersão: Previsões vs Valores Reais")
+    fig, ax = plt.subplots()
+    ax.scatter(y_test, y_pred, edgecolors=(0, 0, 0))
+    ax.plot([y_test.min(), y_test.max()], [y_test.min(), y_test.max()], 'k--', lw=2)
+    ax.set_xlabel('Valores Reais')
+    ax.set_ylabel('Previsões')
+    plt.title('Previsões vs Valores Reais')
+    st.pyplot(fig)
+
+# Função para plotar resíduos
+def plotar_residuos(y_test, y_pred):
+    st.write("### Resíduos: Valores Reais vs Resíduos")
+    residuos = y_test - y_pred
+    fig, ax = plt.subplots()
+    ax.scatter(y_pred, residuos, edgecolors=(0, 0, 0))
+    ax.axhline(y=0, color='r', linestyle='--')
+    ax.set_xlabel('Previsões')
+    ax.set_ylabel('Resíduos')
+    plt.title('Resíduos vs Previsões')
+    st.pyplot(fig)
+
+# Função para plotar matriz de confusão
+def plotar_matriz_confusao(y_test, y_pred):
+    st.write("### Matriz de Confusão:")
+    cm = confusion_matrix(y_test, y_pred)
+    fig, ax = plt.subplots()
+    cax = ax.matshow(cm, cmap=plt.cm.Blues)
+    plt.title('Matriz de Confusão')
+    fig.colorbar(cax)
+    ax.set_xticklabels([''] + list(np.unique(y_test)))
+    ax.set_yticklabels([''] + list(np.unique(y_test)))
+    plt.xlabel('Previstos')
+    plt.ylabel('Verdadeiros')
+    for i in range(cm.shape[0]):
+        for j in range(cm.shape[1]):
+            ax.text(j, i, format(cm[i, j], 'd'), ha='center', va='center', color='red')
+    st.pyplot(fig)
+
+# Função para plotar curva ROC
+def plotar_curva_roc(y_test, y_proba):
+    st.write("### Curva ROC:")
+    fpr, tpr, thresholds = roc_curve(y_test, y_proba[:, 1])
+    roc_auc = auc(fpr, tpr)
+    fig, ax = plt.subplots()
+    ax.plot(fpr, tpr, color='darkorange', lw=2, label=f'Curva ROC (área = {roc_auc:.2f})')
+    ax.plot([0, 1], [0, 1], color='navy', lw=2, linestyle='--')
+    ax.set_xlim([0.0, 1.0])
+    ax.set_ylim([0.0, 1.05])
+    ax.set_xlabel('Taxa de Falso Positivo')
+    ax.set_ylabel('Taxa de Verdadeiro Positivo')
+    ax.set_title('Receiver Operating Characteristic')
+    ax.legend(loc="lower right")
+    st.pyplot(fig)
+
+# Função para comparar com o artigo
+def comparar_com_artigo(mse, mape, r2, erro_medio, mse_artigo, mape_artigo, r2_artigo, erro_medio_artigo):
+    st.write("### Comparação com o Artigo:")
+    st.write(f"MSE no Artigo: {mse_artigo}, MSE do Modelo: {mse:.4f}")
+    st.write(f"MAPE no Artigo: {mape_artigo}, MAPE do Modelo: {mape:.4f}")
+    st.write(f"R² no Artigo: {r2_artigo}, R² do Modelo: {r2:.4f}")
+    st.write(f"Erro Médio no Artigo: {erro_medio_artigo}, Erro Médio do Modelo: {erro_medio:.4f}")
+    
+    if abs(r2 - r2_artigo) > 0.1:
+        st.warning("Atenção: O R² do modelo está significativamente diferente do valor apresentado no artigo.")
+    if mse > mse_artigo * 1.2:
+        st.warning("O MSE do modelo é muito maior que o do artigo. Considere ajustar os hiperparâmetros.")
 #_________________________________
     
     # Imagem e Contatos
@@ -952,76 +1022,6 @@ def main():
             except Exception as e:
                 st.sidebar.error(f"Erro ao carregar o arquivo: {str(e)}")
     #___________________________________________
-
-# Função para exibir gráfico de dispersão (para regressão)
-def plotar_dispersao_previsoes(y_test, y_pred):
-    st.write("### Dispersão: Previsões vs Valores Reais")
-    fig, ax = plt.subplots()
-    ax.scatter(y_test, y_pred, edgecolors=(0, 0, 0))
-    ax.plot([y_test.min(), y_test.max()], [y_test.min(), y_test.max()], 'k--', lw=2)
-    ax.set_xlabel('Valores Reais')
-    ax.set_ylabel('Previsões')
-    plt.title('Previsões vs Valores Reais')
-    st.pyplot(fig)
-
-# Função para plotar resíduos
-def plotar_residuos(y_test, y_pred):
-    st.write("### Resíduos: Valores Reais vs Resíduos")
-    residuos = y_test - y_pred
-    fig, ax = plt.subplots()
-    ax.scatter(y_pred, residuos, edgecolors=(0, 0, 0))
-    ax.axhline(y=0, color='r', linestyle='--')
-    ax.set_xlabel('Previsões')
-    ax.set_ylabel('Resíduos')
-    plt.title('Resíduos vs Previsões')
-    st.pyplot(fig)
-
-# Função para plotar matriz de confusão
-def plotar_matriz_confusao(y_test, y_pred):
-    st.write("### Matriz de Confusão:")
-    cm = confusion_matrix(y_test, y_pred)
-    fig, ax = plt.subplots()
-    cax = ax.matshow(cm, cmap=plt.cm.Blues)
-    plt.title('Matriz de Confusão')
-    fig.colorbar(cax)
-    ax.set_xticklabels([''] + list(np.unique(y_test)))
-    ax.set_yticklabels([''] + list(np.unique(y_test)))
-    plt.xlabel('Previstos')
-    plt.ylabel('Verdadeiros')
-    for i in range(cm.shape[0]):
-        for j in range(cm.shape[1]):
-            ax.text(j, i, format(cm[i, j], 'd'), ha='center', va='center', color='red')
-    st.pyplot(fig)
-
-# Função para plotar curva ROC
-def plotar_curva_roc(y_test, y_proba):
-    st.write("### Curva ROC:")
-    fpr, tpr, thresholds = roc_curve(y_test, y_proba[:, 1])
-    roc_auc = auc(fpr, tpr)
-    fig, ax = plt.subplots()
-    ax.plot(fpr, tpr, color='darkorange', lw=2, label=f'Curva ROC (área = {roc_auc:.2f})')
-    ax.plot([0, 1], [0, 1], color='navy', lw=2, linestyle='--')
-    ax.set_xlim([0.0, 1.0])
-    ax.set_ylim([0.0, 1.05])
-    ax.set_xlabel('Taxa de Falso Positivo')
-    ax.set_ylabel('Taxa de Verdadeiro Positivo')
-    ax.set_title('Receiver Operating Characteristic')
-    ax.legend(loc="lower right")
-    st.pyplot(fig)
-
-# Função para comparar com o artigo
-def comparar_com_artigo(mse, mape, r2, erro_medio, mse_artigo, mape_artigo, r2_artigo, erro_medio_artigo):
-    st.write("### Comparação com o Artigo:")
-    st.write(f"MSE no Artigo: {mse_artigo}, MSE do Modelo: {mse:.4f}")
-    st.write(f"MAPE no Artigo: {mape_artigo}, MAPE do Modelo: {mape:.4f}")
-    st.write(f"R² no Artigo: {r2_artigo}, R² do Modelo: {r2:.4f}")
-    st.write(f"Erro Médio no Artigo: {erro_medio_artigo}, Erro Médio do Modelo: {erro_medio:.4f}")
-    
-    if abs(r2 - r2_artigo) > 0.1:
-        st.warning("Atenção: O R² do modelo está significativamente diferente do valor apresentado no artigo.")
-    if mse > mse_artigo * 1.2:
-        st.warning("O MSE do modelo é muito maior que o do artigo. Considere ajustar os hiperparâmetros.")
-
 
 # Executar a função principal
 if __name__ == "__main__":
